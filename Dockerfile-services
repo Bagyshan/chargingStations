@@ -1,0 +1,18 @@
+FROM maven:3.9.9-eclipse-temurin-21 AS builder
+
+WORKDIR /app
+
+# Копируем pom-файлы заранее, чтобы закешировать зависимости
+COPY pom.xml .
+COPY station-controll-service/pom.xml station-controll-service/pom.xml
+COPY station-integration-service/pom.xml station-integration-service/pom.xml
+
+# Качаем зависимости (кешируется)
+# RUN mvn dependency:go-offline
+RUN mvn clean package -DskipTests
+
+# Копируем исходники
+COPY . .
+
+# Сборка fat jar
+RUN mvn -pl station-controller-service,station-integration-service clean package -DskipTests

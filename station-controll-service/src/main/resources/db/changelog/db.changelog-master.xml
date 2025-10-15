@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xmlns:ext="http://www.liquibase.org/xml/ns/dbchangelog-ext"
+        xsi:schemaLocation="
+         http://www.liquibase.org/xml/ns/dbchangelog
+         http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.0.xsd
+         http://www.liquibase.org/xml/ns/dbchangelog-ext
+         http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-ext.xsd">
+
+    <include file="changes/0001-create-charge-boxes.sql" relativeToChangelogFile="true"/>
+    <include file="changes/0002-create-connectors.sql" relativeToChangelogFile="true"/>
+    <include file="changes/0003-add-connector-status.sql" relativeToChangelogFile="true"/>
+    <include file="changes/0004-create-transaction.sql" relativeToChangelogFile="true"/>
+    <include file="changes/0005-change-transaction-id-column.sql" relativeToChangelogFile="true"/>
+    <include file="changes/0006-change-connector-status-column.sql" relativeToChangelogFile="true"/>
+    <include file="changes/0007-delete-connector-status-enum-constraint.sql" relativeToChangelogFile="true"/>
+    <include file="changes/0008-create-station-state-outbox.sql" relativeToChangelogFile="true"/>
+    <include file="changes/0009-change-station-state-outbox-payload.sql" relativeToChangelogFile="true"/>
+    <include file="changes/0010-add-version-column-to-charge-box-and-connector.sql" relativeToChangelogFile="true"/>
+
+
+
+</databaseChangeLog>

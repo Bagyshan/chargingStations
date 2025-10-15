@@ -1,0 +1,123 @@
+version: "3.8"
+
+
+
+services:
+
+  station-controller-db:
+    image: postgres:16
+    container_name: station-controller-db
+    environment:
+      POSTGRES_DB: stationdb
+      POSTGRES_USER: station
+      POSTGRES_PASSWORD: changeme
+    volumes:
+      - station-db-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  db:
+    # Pinning MariaDB to point release 10.4.30 works around the issues with the
+    # database migrations seen with 10.4.31 in issue #1212.
+    #
+    # TODO: Get database migrations to work with the latest point releases of
+    # MariaDB 10.4.
+    image: mariadb:10.4.30
+    restart: unless-stopped
+    ports:
+      - 3306:3306
+    environment:
+      MYSQL_RANDOM_ROOT_PASSWORD: "yes"
+      MYSQL_DATABASE: stevedb
+      MYSQL_USER: steve
+      MYSQL_PASSWORD: changeme
+  app:
+    restart: unless-stopped
+    build: ./station-steve
+    links:
+      - "db:mariadb"
+    volumes:
+      - ./station-steve:/code
+    ports:
+      - "8180:8180"
+      - "8443:8443"
+    depends_on:
+      - db
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+      - "29092:29092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: kafka-ui
+    ports:
+      - "8041:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+
+  kafka-init:
+    image: confluentinc/cp-kafka:7.5.0
+    depends_on:
+      - kafka
+      - zookeeper
+    command: > 
+      sh -c "
+      kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic ocpp.responses --partitions 16 --replication-factor 1 --config cleanup.policy=delete --config min.insync.replicas=1 --config retention.ms=86400000 --config retention.bytes=1073741824 --config max.message.bytes=1048576 && 
+      kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic ocpp.requests --partitions 16 --replication-factor 1 --config cleanup.policy=delete --config min.insync.replicas=1 --config retention.ms=86400000 --config retention.bytes=1073741824 --config max.message.bytes=1048576 && 
+      kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic station.requests --partitions 16 --replication-factor 1 --config cleanup.policy=delete --config min.insync.replicas=1 --config retention.ms=86400000 --config retention.bytes=1073741824 --config max.message.bytes=1048576 && 
+      kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic station.state --partitions 16 --replication-factor 1 --config "cleanup.policy=compact" --config segment.bytes=1048576 --config segment.ms=30240000000 --config min.cleanable.dirty.ratio=0.3
+      "
+
+#  station-controll-service:
+#    build:
+#      context: .
+#      dockerfile: Dockerfile-services
+#    container_name: station-controll-service
+#    ports:
+#      - "8001:8001"
+#    depends_on:
+#      - kafka
+#      - station-controller-db
+#    environment:
+#      SPRING_PROFILES_ACTIVE: docker
+#
+#  station-integration-service:
+#    build:
+#      context: .
+#      dockerfile: Dockerfile-services
+#    container_name: station-integration-service
+#    ports:
+#      - "8000:8000"
+#    depends_on:
+#      - kafka
+#    environment:
+#      SPRING_PROFILES_ACTIVE: docker
+
+
+
+volumes:
+  station-db-data:
+  db-data:
+    external: false

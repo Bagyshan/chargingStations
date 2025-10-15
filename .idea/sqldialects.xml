@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="SqlDialectMappings">
+    <file url="file://$PROJECT_DIR$/station-controll-service/src/main/java/charg/ing/stations/repository/ConnectorRepository.java" dialect="GenericSQL" />
+    <file url="file://$PROJECT_DIR$/station-controll-service/src/main/resources/db/changelog/changes/0001-create-charge-boxes.sql" dialect="GenericSQL" />
+    <file url="file://$PROJECT_DIR$/station-controll-service/src/main/resources/db/changelog/changes/0004-create-transaction.sql" dialect="GenericSQL" />
+    <file url="file://$PROJECT_DIR$/station-controll-service/src/main/resources/db/changelog/changes/0007-delete-connector-status-enum-constraint.sql" dialect="GenericSQL" />
+    <file url="PROJECT" dialect="PostgreSQL" />
+  </component>
+</project>
