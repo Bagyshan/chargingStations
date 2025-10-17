@@ -5,8 +5,8 @@ spring:
   application:
     name: csms-integration-svc
   kafka:
-    bootstrap-servers: localhost:29092
-#    bootstrap-servers: kafka:9092
+#    bootstrap-servers: localhost:29092
+    bootstrap-servers: kafka:9092
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
@@ -17,5 +17,5 @@ topics:
     responses: ocpp.responses
 
 steve:
-  base-url: http://0.0.0.0:8180
-#  base-url: http://app:8180
+#  base-url: http://0.0.0.0:8180
+  base-url: http://app:8180

@@ -3,24 +3,32 @@ server:
 
 spring:
   datasource:
-    url: jdbc:postgresql://localhost:5432/stationdb
-#    url: jdbc:postgresql://station-controller-db:5432/stationdb
+#    url: jdbc:postgresql://localhost:5432/stationdb
+    url: jdbc:postgresql://station-controller-db:5432/stationdb
     username: station
     password: changeme
     driver-class-name: org.postgresql.Driver
+    hikari:
+      connection-timeout: 60000
+      initialization-fail-timeout: 0
 
   jpa:
     hibernate:
       ddl-auto: none   # Liquibase управляет схемой
     show-sql: true
     database-platform: org.hibernate.dialect.PostgreSQLDialect
+
+
   liquibase:
     change-log: classpath:db/changelog/db.changelog-master.xml
     enabled: true
+    parameters:
+      retryAttempts: 10
+      retryDelay: 5s
 
   kafka:
-    bootstrap-servers: localhost:29092
-#    bootstrap-servers: kafka:9092
+#    bootstrap-servers: localhost:29092
+    bootstrap-servers: kafka:9092
     consumer:
       group-id: station-controller-service-group
       auto-offset-reset: earliest

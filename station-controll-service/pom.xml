@@ -145,7 +145,7 @@
                     <!-- Путь к sql-changelog -->
                     <changeLogFile>src/main/resources/db/changelog/db.changelog-master.xml</changeLogFile>
                     <!-- Перезаписывать параметры подключения можно здесь, но в CI часто используют переменные -->
-                    <url>jdbc:postgresql://localhost:5432/stationdb</url>
+                    <url>jdbc:postgresql://station-controller-db:5432/stationdb</url>
                     <username>station</username>
                     <password>changeme</password>
                 </configuration>

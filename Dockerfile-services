@@ -1,18 +1,21 @@
-FROM maven:3.9.9-eclipse-temurin-21 AS builder
+FROM eclipse-temurin:21.0.2_13-jdk-jammy AS build
 
-WORKDIR /app
+ARG JAR_FILE
+WORKDIR /build
 
-# Копируем pom-файлы заранее, чтобы закешировать зависимости
-COPY pom.xml .
-COPY station-controll-service/pom.xml station-controll-service/pom.xml
-COPY station-integration-service/pom.xml station-integration-service/pom.xml
+ADD $JAR_FILE application.jar
+RUN java -Djarmode=layertools -jar application.jar extract --destination extracted
 
-# Качаем зависимости (кешируется)
-# RUN mvn dependency:go-offline
-RUN mvn clean package -DskipTests
+FROM eclipse-temurin:21.0.2_13-jdk-jammy
 
-# Копируем исходники
-COPY . .
+RUN addgroup spring-boot-group && adduser --ingroup spring-boot-group spring-boot
+USER spring-boot:spring-boot-group
+VOLUME /tmp
+WORKDIR /application
 
-# Сборка fat jar
-RUN mvn -pl station-controller-service,station-integration-service clean package -DskipTests
+COPY --from=build /build/extracted/dependencies .
+COPY --from=build /build/extracted/spring-boot-loader .
+COPY --from=build /build/extracted/snapshot-dependencies .
+COPY --from=build /build/extracted/application .
+
+ENTRYPOINT exec java ${JAVA_OPTS} org.springframework.boot.loader.launch.JarLauncher ${0} ${@}
