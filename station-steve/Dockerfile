@@ -16,7 +16,7 @@ WORKDIR /code
 VOLUME ["/code"]
 
 # Copy the application's code
-COPY bagyshSteve /code
+COPY . /code
 
 # Wait for the db to startup(via dockerize), then 
 # Build and run steve, requires a db to be available on port 3306
