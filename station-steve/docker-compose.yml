@@ -1,0 +1,70 @@
+version: "3.8"
+
+
+
+services:
+
+  db:
+    # Pinning MariaDB to point release 10.4.30 works around the issues with the
+    # database migrations seen with 10.4.31 in issue #1212.
+    #
+    # TODO: Get database migrations to work with the latest point releases of
+    # MariaDB 10.4.
+    image: mariadb:10.4.30
+    restart: unless-stopped
+    ports:
+      - 3306:3306
+    environment:
+      MYSQL_RANDOM_ROOT_PASSWORD: "yes"
+      MYSQL_DATABASE: stevedb
+      MYSQL_USER: steve
+      MYSQL_PASSWORD: changeme
+  app:
+    restart: unless-stopped
+    build: bagyshSteve
+    links:
+      - "db:mariadb"
+    volumes:
+      - .:/code
+    ports:
+      - "8180:8180"
+      - "8443:8443"
+    depends_on:
+      - db
+
+  zookeeperr:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: zookeeperr
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2182
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2182:2181"
+
+  kafkaa:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: kafkaa
+    depends_on:
+      - zookeeperr
+    ports:
+      - "9093:9092"
+      - "39093:29092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeperr:2182
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafkaa:9093,PLAINTEXT_HOST://localhost:39093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+
+  kafka-uii:
+    image: provectuslabs/kafka-ui:latest
+    container_name: kafka-uii
+    ports:
+      - "8041:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafkaa:9093
+
+volumes:
+  db-data:
+    external: false
