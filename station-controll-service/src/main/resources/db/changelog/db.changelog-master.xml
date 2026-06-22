@@ -19,6 +19,29 @@
     <include file="changes/0008-create-station-state-outbox.sql" relativeToChangelogFile="true"/>
     <include file="changes/0009-change-station-state-outbox-payload.sql" relativeToChangelogFile="true"/>
     <include file="changes/0010-add-version-column-to-charge-box-and-connector.sql" relativeToChangelogFile="true"/>
+    <include file="changes/0011-turn-on-postgis.sql" relativeToChangelogFile="true"/>
+    <include file="changes/0012-add-geolocation-column-to-charge-box-table.sql" relativeToChangelogFile="true"/>
+    <include file="changes/0013-create-spatial-functions.sql" relativeToChangelogFile="true"/>
+    <include file="changes/0014-add-user-column-to-transaction.sql" relativeToChangelogFile="true"/>
+    <include file="changes/0015-change-user-id-type-in-transaction.sql" relativeToChangelogFile="true"/>
+    <include file="changes/0016-add-contractor-id-to-change-box.sql" relativeToChangelogFile="true"/>
+    <include file="changes/0017-add-power-and-kw-cost-to-charge-box.sql" relativeToChangelogFile="true"/>
+    <include file="changes/0018-add-booking-user-id-to-connector.sql" relativeToChangelogFile="true"/>
+    <include file="changes/0019-add-booking-minute-cost-column-to-charge-box.sql" relativeToChangelogFile="true"/>
+    <include file="changes/0020-add-charging-user-id-to-connector-table.sql" relativeToChangelogFile="true"/>
+    <include file="changes/0021-add-ocpp-tag-to-charge-box-table.sql" relativeToChangelogFile="true"/>
+    <include file="changes/0022-alter-charging-user-id-type-in-connector.sql" relativeToChangelogFile="true"/>
+    <include file="changes/0023-add-address-table.sql" relativeToChangelogFile="true"/>
+    <include file="changes/0024-bind-charge-box-with-address-table.sql" relativeToChangelogFile="true"/>
+    <include file="changes/0025-create-connector-type.sql" relativeToChangelogFile="true"/>
+    <include file="changes/0026-add-connector-type-to-connector.sql" relativeToChangelogFile="true"/>
+    <include file="changes/0027-add-transaction-total-sum.sql" relativeToChangelogFile="true"/>
+    <include file="changes/0028-drop-transaction-unique-constraints.sql" relativeToChangelogFile="true"/>
+    <include file="changes/0029-add-max-kw-quantity-to-transaction.sql" relativeToChangelogFile="true"/>
+    <include file="changes/0030-add-service-status-to-charge-box.sql" relativeToChangelogFile="true"/>
+    <include file="changes/0031-add-connectivity-to-charge-box.sql" relativeToChangelogFile="true"/>
+
+
 
 
 

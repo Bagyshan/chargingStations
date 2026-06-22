@@ -1,0 +1,143 @@
+server:
+  port: 8003
+
+
+spring:
+  application:
+    name: websocket-service
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP:localhost:29092}
+    consumer:
+      group-id: websocket-service-group
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          jwk-set-uri: http://localhost:8080/realms/charging-stations/protocol/openid-connect/certs
+
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      database: 0
+      connect-timeout: 2000ms
+      lettuce:
+        pool:
+          max-active: 8
+          max-wait: -1ms
+          max-idle: 8
+          min-idle: 0
+        shutdown-timeout: 100ms
+
+  cloud:
+    consul:
+      config:
+        enabled: false
+      discovery:
+        host: consul
+        port: 8500
+        enabled: true
+        register: true
+        health-check-path: /actuator/health
+        health-check-interval: 15s
+        instance-id: ${spring.application.name}:${spring.application.instance_id:${random.value}}
+        tags:
+          - ev-charging
+          - station-management
+        health-check-critical-timeout: 5m
+        service-name: ${spring.application.name}
+
+
+resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        slidingWindowSize: 10
+        failureRateThreshold: 50
+        waitDurationInOpenState: 10000
+        permittedNumberOfCallsInHalfOpenState: 3
+        automaticTransitionFromOpenToHalfOpenEnabled: true
+
+
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+  prometheus:
+    metrics:
+      export:
+        enabled: true
+
+#management:
+#  endpoints:
+#    web:
+#      exposure:
+#        include: health,info,metrics
+#  endpoint:
+#    health:
+#      show-details: always
+
+
+
+# SpringDoc OpenAPI Configuration
+springdoc:
+  api-docs:
+    path: /api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    operations-sorter: method
+    tags-sorter: alpha
+    display-request-duration: true
+    try-it-out-enabled: true
+  packages-to-scan: charg.ing.stations.websocketservice.controller
+
+logging:
+  level:
+    # Наш сервис - максимальная детализация
+    charg.ing.stations.websocketservice: DEBUG
+    # Redis операции
+    org.springframework.data.redis: DEBUG
+    io.lettuce.core: INFO
+    # WebSocket
+    org.springframework.web.socket: DEBUG
+    org.springframework.web.reactive.socket: DEBUG
+    # WebFlux
+    org.springframework.web.reactive: DEBUG
+    # SpringDoc
+    org.springdoc: DEBUG
+    # Полезные для отладки
+    reactor.netty: DEBUG
+    reactor.core.publisher.Hooks: DEBUG
+    org.springframework.boot.autoconfigure: INFO
+#
+#  pattern:
+#    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
+
+#  file:
+#    name: logs/websocket-service.log
+#    max-size: 10MB
+#    max-history: 30
+
+
+#logging:
+#  level:
+#    charg.ing.stations.websocketservice: DEBUG
+#    org.springframework.web: INFO
+#    org.springframework.data.redis: INFO
+
+
+#logging:
+#  level:
+#    com.example.websocket: DEBUG
+#    org.springframework.web.socket: DEBUG

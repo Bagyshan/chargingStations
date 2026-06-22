@@ -40,6 +40,12 @@ public class ConnectorEntity {
     @Column(name = "status", length = 20)
     private String status;
 
+    @Column(name = "charging_user_id")
+    private String chargingUserId;
+
+    @Column(name = "booking_user_id")
+    private String bookingUserId;
+
     @Version
     @Column(name = "version")
     private Long version;
@@ -52,4 +58,8 @@ public class ConnectorEntity {
 
     @OneToMany(mappedBy = "connector")
     private List<TransactionEntity> transactions;
+
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "connector_type_id")
+    private ConnectorTypeEntity connectorType;
 }

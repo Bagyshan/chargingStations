@@ -1,0 +1,173 @@
+server:
+  port: 8002
+
+
+spring:
+  config:
+    activate:
+      on-profile: consul
+  application:
+    name: state-updater-service
+
+
+  # Redis Configuration
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      database: 0
+      connect-timeout: 2000ms
+      lettuce:
+        pool:
+          max-active: 8
+          max-wait: -1ms
+          max-idle: 8
+          min-idle: 0
+        shutdown-timeout: 100ms
+      # Stream-specific settings
+      streams:
+        enabled: true
+        # Можно настроить различные consumer группы
+        consumer-groups:
+          station-updaters:
+            enabled: true
+          websocket-service:
+            enabled: true
+            auto-start: false
+
+  geo:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      database: 1
+      timeout: 2000ms
+
+  # Kafka Configuration
+  kafka:
+    bootstrap-servers: ${KAFKA_BROKERS:localhost:29092}
+    consumer:
+      group-id: state-updater-group
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+#      value-deserializer: org.apache.kafka.common.serialization.JsonDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: "*"
+        spring.json.value.default.type: "charg.ing.stations.dto.StationStateDTO"
+    listener:
+      missing-topics-fatal: false
+      ack-mode: batch
+
+#  # Cloud Configuration
+#  cloud:
+#    config:
+#      fail-fast: false
+#    discovery:
+#      enabled: true
+  cloud:
+    consul:
+      config:
+        enabled: false
+        import-check:
+          enabled=false: false
+      # Конфигурация Consul Discovery
+      discovery:
+        host: localhost
+        port: 8500
+        enabled: true
+        register: true
+        health-check-path: /actuator/health
+        health-check-interval: 15s
+        instance-id: ${spring.application.name}:${spring.application.instance_id:${random.value}}
+        tags:
+          - ev-charging
+          - state-management
+        health-check-critical-timeout: 5m
+        service-name: ${spring.application.name}
+
+# Feign Client Configuration
+#feign:
+#  client:
+#    config:
+#      default:
+#        connect-timeout: 5000
+#        read-timeout: 10000
+#        logger-level: basic
+#  circuitbreaker:
+#    enabled: true
+
+kafka:
+  consumer:
+    auto-startup: false
+
+feign:
+  client:
+    config:
+      default:
+        connectTimeout: 5000
+        readTimeout: 30000
+        loggerLevel: basic
+        retryer: feign.Retryer.Default
+  httpclient:
+    enabled: true
+  circuitbreaker:
+    enabled: true
+
+# Настройки Resilience4j Circuit Breaker
+resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        slidingWindowSize: 10
+        failureRateThreshold: 50
+        waitDurationInOpenState: 10000
+        permittedNumberOfCallsInHalfOpenState: 3
+        automaticTransitionFromOpenToHalfOpenEnabled: true
+    instances:
+      stationControllService:
+        baseConfig: default
+
+# Management Endpoints
+management:
+  server:
+    port: ${server.port}
+  endpoints:
+    web:
+      exposure:
+        include: "health,info,metrics,prometheus"
+      base-path: /actuator
+  endpoint:
+    health:
+      show-details: always
+      show-components: always
+    metrics:
+      access: read_only
+  health:
+    consul:
+      enabled: true
+    redis:
+      enabled: true
+
+# Application Specific Configuration
+app:
+  cache:
+    initialization-enabled: true
+    backup-enabled: true
+    sync-batch-size: 100
+  services:
+    station-controll-service:
+      url: http://0.0.0.0:8001
+#      url: http://station-controll-service
+  kafka:
+    topics:
+      station-state: "station.state"
+
+# Logging
+logging:
+  level:
+    charg.ing.stations: DEBUG
+    org.springframework.data.redis: DEBUG
+#    org.springframework.data.redis: INFO
+    org.springframework.kafka: INFO
+    feign: DEBUG

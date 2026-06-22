@@ -21,12 +21,15 @@ package de.rwth.idsg.steve.ocpp.soap;
 import de.rwth.idsg.steve.ocpp.OcppProtocol;
 import de.rwth.idsg.steve.ocpp.OcppVersion;
 import de.rwth.idsg.steve.ocpp.ws.ocpp16.dto.ConnectorCreateEvent;
+import de.rwth.idsg.steve.ocpp.ws.ocpp16.dto.ConnectorStatusEvent;
+import de.rwth.idsg.steve.ocpp.ws.ocpp16.dto.MeterValueEvent;
 import de.rwth.idsg.steve.ocpp.ws.ocpp16.dto.StationCreateEvent;
 import de.rwth.idsg.steve.ocpp.ws.ocpp16.enums.Type;
 import de.rwth.idsg.steve.ocpp.ws.ocpp16.producer.StationEventProducer;
 import de.rwth.idsg.steve.repository.OcppServerRepository;
 import de.rwth.idsg.steve.service.CentralSystemService16_Service;
 import lombok.extern.slf4j.Slf4j;
+import ocpp.cs._2010._08.MeterValue;
 import ocpp.cs._2015._10.AuthorizeRequest;
 import ocpp.cs._2015._10.AuthorizeResponse;
 import ocpp.cs._2015._10.BootNotificationRequest;
@@ -48,6 +51,7 @@ import ocpp.cs._2015._10.StatusNotificationRequest;
 import ocpp.cs._2015._10.StatusNotificationResponse;
 import ocpp.cs._2015._10.StopTransactionRequest;
 import ocpp.cs._2015._10.StopTransactionResponse;
+import org.joda.time.DateTime;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -137,11 +141,36 @@ public class CentralSystemService16_SoapServer implements CentralSystemService {
             stationEventProducer.sendConnectorCreated(event);
         }
 
+        // Форвардим КАЖДЫЙ StatusNotification в Kafka, чтобы station-controll держал
+        // operational-статус коннектора актуальным и реагировал на Faulted/Unavailable.
+        ConnectorStatusEvent statusEvent = new ConnectorStatusEvent(
+                chargeBoxIdentity,
+                parameters.getConnectorId(),
+                parameters.getStatus() != null ? parameters.getStatus().value() : null,
+                parameters.getErrorCode() != null ? parameters.getErrorCode().value() : null,
+                parameters.getInfo(),
+                Type.STATUS_NOTIFICATION,
+                parameters.isSetTimestamp() ? parameters.getTimestamp() : DateTime.now()
+        );
+        stationEventProducer.sendConnectorStatus(statusEvent);
+
         return response;
     }
 
     @Override
     public MeterValuesResponse meterValues(MeterValuesRequest parameters, String chargeBoxIdentity) {
+
+
+        MeterValueEvent event = new MeterValueEvent(
+                chargeBoxIdentity,
+                parameters.getConnectorId(),
+                parameters.getMeterValue(),
+                Type.METER_VALUE,
+                DateTime.now()
+        );
+
+        stationEventProducer.sendMeterValue(event);
+
         return service.meterValues(parameters, chargeBoxIdentity);
     }
 

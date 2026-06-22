@@ -25,6 +25,8 @@ import de.rwth.idsg.steve.ocpp.OcppTransport;
 import de.rwth.idsg.steve.ocpp.OcppVersion;
 import de.rwth.idsg.steve.ocpp.ws.data.CommunicationContext;
 import de.rwth.idsg.steve.ocpp.ws.data.SessionContext;
+import de.rwth.idsg.steve.ocpp.ws.ocpp16.dto.StationConnectivityEvent;
+import de.rwth.idsg.steve.ocpp.ws.ocpp16.producer.StationEventProducer;
 import de.rwth.idsg.steve.ocpp.ws.pipeline.IncomingPipeline;
 import de.rwth.idsg.steve.repository.OcppServerRepository;
 import de.rwth.idsg.steve.service.notification.OcppStationWebSocketConnected;
@@ -59,6 +61,7 @@ public abstract class AbstractWebSocketEndpoint extends ConcurrentWebSocketHandl
     @Autowired private OcppServerRepository ocppServerRepository;
     @Autowired private FutureResponseContextStore futureResponseContextStore;
     @Autowired private ApplicationEventPublisher applicationEventPublisher;
+    @Autowired private StationEventProducer stationEventProducer;
 
     public static final String CHARGEBOX_ID_KEY = "CHARGEBOX_ID_KEY";
 
@@ -76,6 +79,12 @@ public abstract class AbstractWebSocketEndpoint extends ConcurrentWebSocketHandl
 
         connectedCallbackList.add((chargeBoxId) -> applicationEventPublisher.publishEvent(new OcppStationWebSocketConnected(chargeBoxId)));
         disconnectedCallbackList.add((chargeBoxId) -> applicationEventPublisher.publishEvent(new OcppStationWebSocketDisconnected(chargeBoxId)));
+
+        // Форвардим online/offline в Kafka, чтобы station-controll держал признак online станции.
+        connectedCallbackList.add((chargeBoxId) -> stationEventProducer.sendConnectivity(
+                new StationConnectivityEvent(chargeBoxId, "CONNECTED", DateTime.now())));
+        disconnectedCallbackList.add((chargeBoxId) -> stationEventProducer.sendConnectivity(
+                new StationConnectivityEvent(chargeBoxId, "DISCONNECTED", DateTime.now())));
     }
 
     @Override

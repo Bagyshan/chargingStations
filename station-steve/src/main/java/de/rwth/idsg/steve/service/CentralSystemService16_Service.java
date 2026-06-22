@@ -77,6 +77,7 @@ public class CentralSystemService16_Service {
     @Autowired private OcppTagService ocppTagService;
     @Autowired private ApplicationEventPublisher applicationEventPublisher;
     @Autowired private ChargePointHelperService chargePointHelperService;
+    @Autowired private de.rwth.idsg.steve.ocpp.ws.ocpp16.producer.StationEventProducer stationEventProducer;
 
     public BootNotificationResponse bootNotification(BootNotificationRequest parameters, String chargeBoxIdentity,
                                                      OcppProtocol ocppProtocol) {
@@ -236,6 +237,10 @@ public class CentralSystemService16_Service {
     public HeartbeatResponse heartbeat(HeartbeatRequest parameters, String chargeBoxIdentity) {
         DateTime now = DateTime.now();
         ocppServerRepository.updateChargeboxHeartbeat(chargeBoxIdentity, now);
+
+        // Периодический liveness-сигнал в Kafka для offline-детекта в station-controll.
+        stationEventProducer.sendConnectivity(
+                new de.rwth.idsg.steve.ocpp.ws.ocpp16.dto.StationConnectivityEvent(chargeBoxIdentity, "HEARTBEAT", now));
 
         return new HeartbeatResponse().withCurrentTime(now);
     }

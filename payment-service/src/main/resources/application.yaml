@@ -1,0 +1,82 @@
+spring:
+  application:
+    name: payment-service
+
+  r2dbc:
+    url: ${R2DBC_URL:r2dbc:postgresql://localhost:5435/paymentdb}
+    username: ${R2DBC_USERNAME:payment}
+    password: ${R2DBC_PASSWORD:changeme}
+
+  datasource:
+    # JDBC datasource used by Liquibase (blocking) — отдельная секция
+    url: ${JDBC_URL:jdbc:postgresql://localhost:5435/paymentdb}
+    username: ${JDBC_USERNAME:payment}
+    password: ${JDBC_PASSWORD:changeme}
+    driver-class-name: org.postgresql.Driver
+
+  liquibase:
+    enabled: true
+    change-log: classpath:db/changelog/db.changelog-master.xml
+    url: jdbc:postgresql://localhost:5435/paymentdb
+    user: payment
+    password: changeme
+    # можно отключать в тестах / dev через env: spring.liquibase.enabled=false
+
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          jwk-set-uri: ${JWK_SET_URI:http://localhost:8080/realms/charging-stations/protocol/openid-connect/certs}
+
+#  kafka:
+#    bootstrap-servers: ${KAFKA_BOOTSTRAP:localhost:29092}
+#    consumer:
+#      group-id: payment-service-group
+#      auto-offset-reset: earliest
+#      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+#      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+#      properties:
+#        spring.json.trusted.packages: '*'
+#    producer:
+#      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+#      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+#    listener:
+#      missing-topics-fatal: false
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP:localhost:29092}
+    consumer:
+      group-id: payment-service-group
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: '*'
+        spring.json.value.default.type: charg.ing.stations.dto.kafka.PaymentRequest
+#        spring.json.type.mapping: >
+#          bookingEventMessage:charg.ing.stations.dto.event.BookingEventMessage
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+
+# O!Dengi (dengi.kg) QR-pay merchant API
+dengi:
+  api-url: ${DENGI_API_URL:https://mw-api-test.dengi.kg/api/json/json.php}
+  sid: ${DENGI_SID:3567780484}
+  password: "${DENGI_PASSWORD:@PDI(F239#H7PGD}"
+  version: ${DENGI_VERSION:1005}
+  lang: ${DENGI_LANG:ru}
+  test: ${DENGI_TEST:1}
+  # Public URL O!Dengi will call on status change. Must be reachable from the internet in prod.
+  result-url: ${DENGI_RESULT_URL:http://localhost:8007/api/v1/payments/callback}
+  # HMAC-MD5 signing per «Формирование hash» — verify incoming callbacks.
+  verify-callback-hash: ${DENGI_VERIFY_CALLBACK_HASH:true}
+  reconcile-interval-ms: ${DENGI_RECONCILE_INTERVAL_MS:30000}
+
+server:
+  port: ${PORT:8007}
+
+logging:
+  level:
+    root: INFO
+    ru.company: DEBUG

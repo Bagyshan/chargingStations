@@ -22,5 +22,6 @@ public class StopTransactionUpdateEvent {
     private String stopValue;
     private ActionType actionType;
     private TransactionStatus status;
+    private String userId;
     private Instant stopTimestamp;
 }

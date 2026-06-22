@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xmlns:ext="http://www.liquibase.org/xml/ns/dbchangelog-ext"
+                   xsi:schemaLocation="
+                   http://www.liquibase.org/xml/ns/dbchangelog
+                   http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.0.xsd
+                   http://www.liquibase.org/xml/ns/dbchangelog-ext
+                   http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-ext.xsd">
+
+    <include file="changes/0001-create-charge-box-table.sql" relativeToChangelogFile="true"/>
+    <include file="changes/0002-create-connector-table.sql" relativeToChangelogFile="true"/>
+    <include file="changes/0003-create-transaction-table.sql" relativeToChangelogFile="true"/>
+    <include file="changes/0004-create-booking-table.sql" relativeToChangelogFile="true"/>
+    <include file="changes/0005-add-total-sum-and-price-per-kwh-to-transaction.sql" relativeToChangelogFile="true"/>
+    <include file="changes/0006-add-station-hourly-tariffs-table.sql" relativeToChangelogFile="true"/>
+    <include file="changes/0007-change-transaction-id-type.sql" relativeToChangelogFile="true"/>
+    <include file="changes/0008-add-transaction-id-index.sql" relativeToChangelogFile="true"/>
+    <include file="changes/0009-add-operational-columns-to-charge-box.sql" relativeToChangelogFile="true"/>
+    <include file="changes/0010-add-user-columns-to-connector.sql" relativeToChangelogFile="true"/>
+
+</databaseChangeLog>

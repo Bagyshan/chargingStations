@@ -1,0 +1,627 @@
+# Полный продакшн-стек на одном сервере: инфраструктура + Consul + SteVe + 11 сервисов + nginx.
+# Запуск:  cp .env.example .env  (выставить SERVER_HOST и пароли) && ./deploy.sh
+# Единая точка входа — nginx на :80 → api-gateway-service (:8010) + Keycloak (/realms,/admin,...).
+#
+# Все хосты/секреты в конфигах сервисов переопределяются здесь через переменные окружения
+# (Spring relaxed-binding), сами application.yaml не трогаем.
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+
+  # ============================ Базы данных ============================
+
+  keycloak-db:
+    image: postgres:16
+    container_name: keycloak-db
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      POSTGRES_DB: keycloak
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD: ${KEYCLOAK_DB_PASSWORD:-changeme}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=C --lc-ctype=C"
+    volumes:
+      - keycloak-db-data:/var/lib/postgresql/data
+    networks: [charging-stations-network]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U keycloak -d keycloak"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  station-controller-db:
+    image: postgis/postgis:16-3.4
+    container_name: station-controller-db
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      POSTGRES_DB: stationdb
+      POSTGRES_USER: station
+      POSTGRES_PASSWORD: ${STATION_DB_PASSWORD:-changeme}
+    volumes:
+      - station-db-data:/var/lib/postgresql/data
+      - ./docker-entrypoint-initdb.d/init_postgis.sql:/docker-entrypoint-initdb.d/init_postgis.sql:ro
+    networks: [charging-stations-network]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U station -d stationdb"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  user-service-db:
+    image: postgres:16
+    container_name: user-service-db
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      POSTGRES_DB: userdb
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: ${USER_DB_PASSWORD:-changeme}
+    volumes:
+      - user-db-data:/var/lib/postgresql/data
+    networks: [charging-stations-network]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d userdb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  payment-service-db:
+    image: postgres:16
+    container_name: payment-service-db
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      POSTGRES_DB: paymentdb
+      POSTGRES_USER: payment
+      POSTGRES_PASSWORD: ${PAYMENT_DB_PASSWORD:-changeme}
+    volumes:
+      - payment-db-data:/var/lib/postgresql/data
+    networks: [charging-stations-network]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U payment -d paymentdb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  booking-service-db:
+    image: postgres:16
+    container_name: booking-service-db
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      POSTGRES_DB: bookingdb
+      POSTGRES_USER: booking
+      POSTGRES_PASSWORD: ${BOOKING_DB_PASSWORD:-changeme}
+    volumes:
+      - booking-db-data:/var/lib/postgresql/data
+    networks: [charging-stations-network]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U booking -d bookingdb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  contractor-admin-service-db:
+    image: postgres:16
+    container_name: contractor-admin-service-db
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      POSTGRES_DB: contractordb
+      POSTGRES_USER: contractor
+      POSTGRES_PASSWORD: ${CONTRACTOR_DB_PASSWORD:-changeme}
+    volumes:
+      - contractor-db-data:/var/lib/postgresql/data
+    networks: [charging-stations-network]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U contractor -d contractordb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # MariaDB для SteVe. Pin 10.4.30 — см. комментарий в docker-compose.local.yaml.
+  db:
+    image: mariadb:10.4.30
+    container_name: steve-db
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      MYSQL_RANDOM_ROOT_PASSWORD: "yes"
+      MYSQL_DATABASE: stevedb
+      MYSQL_USER: steve
+      MYSQL_PASSWORD: ${STEVE_DB_PASSWORD:-changeme}
+    volumes:
+      - mariadb_data:/var/lib/mysql
+    networks:
+      charging-stations-network:
+        aliases:
+          - mariadb
+
+  # ============================ Брокеры / кэш / discovery ============================
+
+  redis:
+    image: redis:7.2
+    container_name: redis
+    restart: unless-stopped
+    logging: *default-logging
+    volumes:
+      - redis-data:/data
+    networks: [charging-stations-network]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: zookeeper
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    networks: [charging-stations-network]
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: kafka
+    restart: unless-stopped
+    logging: *default-logging
+    depends_on:
+      - zookeeper
+    # 29092 наружу — для отладки с хоста; контейнеры ходят на kafka:9092.
+    ports:
+      - "29092:29092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    networks: [charging-stations-network]
+    healthcheck:
+      test: ["CMD", "kafka-topics", "--bootstrap-server", "kafka:9092", "--list"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: kafka-ui
+    restart: unless-stopped
+    logging: *default-logging
+    # Доступ через nginx: http://<host>/kafka/ (контекст-путь). Порт наружу не открываем.
+    environment:
+      KAFKA_CLUSTERS_0_NAME: prod
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+      SERVER_SERVLET_CONTEXT_PATH: /kafka
+    networks: [charging-stations-network]
+    depends_on:
+      kafka:
+        condition: service_healthy
+
+  # Создаёт все топики один раз. Список синхронизирован с docker-compose.local.yaml.
+  kafka-init:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: kafka-init
+    depends_on:
+      kafka:
+        condition: service_healthy
+    networks: [charging-stations-network]
+    command: >
+      sh -c "
+      kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic ocpp.responses --partitions 16 --replication-factor 1 --config cleanup.policy=delete --config min.insync.replicas=1 --config retention.ms=86400000 --config retention.bytes=1073741824 --config max.message.bytes=1048576 &&
+      kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic ocpp.requests --partitions 16 --replication-factor 1 --config cleanup.policy=delete --config min.insync.replicas=1 --config retention.ms=86400000 --config retention.bytes=1073741824 --config max.message.bytes=1048576 &&
+      kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic station.requests --partitions 16 --replication-factor 1 --config cleanup.policy=delete --config min.insync.replicas=1 --config retention.ms=86400000 --config retention.bytes=1073741824 --config max.message.bytes=1048576 &&
+      kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic station.state --partitions 16 --replication-factor 1 --config cleanup.policy=compact --config segment.bytes=1048576 --config segment.ms=30240000000 --config min.cleanable.dirty.ratio=0.3 &&
+      kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic station.meter.values --partitions 16 --replication-factor 1 --config cleanup.policy=compact --config segment.bytes=1048576 --config segment.ms=30240000000 --config min.cleanable.dirty.ratio=0.3 &&
+      kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic station.status --partitions 16 --replication-factor 1 --config cleanup.policy=delete --config min.insync.replicas=1 --config retention.ms=86400000 --config retention.bytes=1073741824 --config max.message.bytes=1048576 &&
+      kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic station.connectivity --partitions 16 --replication-factor 1 --config cleanup.policy=delete --config min.insync.replicas=1 --config retention.ms=86400000 --config retention.bytes=1073741824 --config max.message.bytes=1048576 &&
+      kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic station.alerts --partitions 16 --replication-factor 1 --config cleanup.policy=delete --config min.insync.replicas=1 --config retention.ms=86400000 --config retention.bytes=1073741824 --config max.message.bytes=1048576 &&
+      kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic booking.payment.requests --partitions 16 --replication-factor 1 --config cleanup.policy=delete --config min.insync.replicas=1 --config retention.ms=86400000 --config retention.bytes=1073741824 --config max.message.bytes=1048576 &&
+      kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic booking.payment.responses --partitions 16 --replication-factor 1 --config cleanup.policy=delete --config min.insync.replicas=1 --config retention.ms=86400000 --config retention.bytes=1073741824 --config max.message.bytes=1048576 &&
+      kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic booking.station.requests --partitions 16 --replication-factor 1 --config cleanup.policy=delete --config min.insync.replicas=1 --config retention.ms=86400000 --config retention.bytes=1073741824 --config max.message.bytes=1048576 &&
+      kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic booking.station.responses --partitions 16 --replication-factor 1 --config cleanup.policy=delete --config min.insync.replicas=1 --config retention.ms=86400000 --config retention.bytes=1073741824 --config max.message.bytes=1048576 &&
+      kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic booking.state --partitions 16 --replication-factor 1 --config cleanup.policy=delete --config min.insync.replicas=1 --config retention.ms=86400000 --config retention.bytes=1073741824 --config max.message.bytes=1048576 &&
+      kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic booking.events --partitions 16 --replication-factor 1 --config cleanup.policy=delete --config min.insync.replicas=1 --config retention.ms=86400000 --config retention.bytes=1073741824 --config max.message.bytes=1048576 &&
+      kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic payment.events --partitions 16 --replication-factor 1 --config cleanup.policy=delete --config min.insync.replicas=1 --config retention.ms=86400000 --config retention.bytes=1073741824 --config max.message.bytes=1048576 &&
+      kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic charging.payment.requests --partitions 16 --replication-factor 1 --config cleanup.policy=delete --config min.insync.replicas=1 --config retention.ms=86400000 --config retention.bytes=1073741824 --config max.message.bytes=1048576 &&
+      kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic charging.payment.responses --partitions 16 --replication-factor 1 --config cleanup.policy=delete --config min.insync.replicas=1 --config retention.ms=86400000 --config retention.bytes=1073741824 --config max.message.bytes=1048576 &&
+      kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic transaction.events --partitions 16 --replication-factor 1 --config cleanup.policy=delete --config min.insync.replicas=1 --config retention.ms=86400000 --config retention.bytes=1073741824 --config max.message.bytes=1048576 &&
+      kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic charging.user.status --partitions 16 --replication-factor 1 --config cleanup.policy=delete --config min.insync.replicas=1 --config retention.ms=86400000 --config retention.bytes=1073741824 --config max.message.bytes=1048576 &&
+      kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic station.hourly.tariffs --partitions 1 --replication-factor 1 --config cleanup.policy=delete --config min.insync.replicas=1 --config retention.ms=86400000 --config retention.bytes=1073741824 --config max.message.bytes=1048576
+      "
+
+  consul-server:
+    image: consul:1.15
+    container_name: consul-server
+    restart: unless-stopped
+    logging: *default-logging
+    # Доступ к UI через nginx: http://<host>/ui/ (API /v1/). Порт наружу не открываем.
+    environment:
+      - CONSUL_BIND_INTERFACE=eth0
+      - CONSUL_HTTP_ADDR=0.0.0.0:8500
+    command:
+      - "agent"
+      - "-server"
+      - "-bootstrap"
+      - "-ui"
+      - "-client=0.0.0.0"
+    networks: [charging-stations-network]
+
+  # ============================ Keycloak ============================
+  # За nginx на корневых путях KC (/realms,/resources,/admin). Realm импортируется из
+  # keycloak-realm-config/charging-stations-realm.json (--import-realm) — единый для всех окружений.
+  keycloak:
+    image: quay.io/keycloak/keycloak:24.0.2
+    container_name: keycloak
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://keycloak-db:5432/keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:-changeme}
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-changeme}
+      KC_HOSTNAME: ${SERVER_HOST:-localhost}
+      KC_HOSTNAME_STRICT: "false"
+      KC_HOSTNAME_STRICT_HTTPS: "false"
+      KC_HTTP_ENABLED: "true"
+      KC_PROXY_HEADERS: xforwarded
+      KC_LOG_LEVEL: INFO
+      QUARKUS_TRANSACTION_MANAGER_ENABLE_RECOVERY: "true"
+    # start-dev: проще для деплоя по IP без TLS и совпадает с рабочей dev-конфигурацией.
+    # Для ужесточённого прод-режима заменить на `start` (см. DEPLOY.md).
+    command: start-dev --import-realm
+    volumes:
+      - ./keycloak-realm-config:/opt/keycloak/data/import
+    networks: [charging-stations-network]
+    depends_on:
+      keycloak-db:
+        condition: service_healthy
+
+  # ============================ SteVe (OCPP 1.6 Central System) ============================
+  app:
+    build: ./station-steve
+    container_name: station-steve
+    restart: unless-stopped
+    logging: *default-logging
+    # Доступ к SteVe (админка + OCPP WebSocket) — через nginx по пути /steve/, портов наружу не открываем.
+    volumes:
+      - ./station-steve:/code
+    networks: [charging-stations-network]
+    depends_on:
+      - db
+
+  # ============================ Прикладные сервисы ============================
+
+  station-controll-service:
+    build:
+      context: .
+      dockerfile: Dockerfile-services
+      args:
+        JAR_FILE: station-controll-service/target/station-controll-service-1.0-SNAPSHOT-exec.jar
+    container_name: station-controll-service
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      SPRING_DATASOURCE_URL: jdbc:postgresql://station-controller-db:5432/stationdb
+      SPRING_DATASOURCE_USERNAME: station
+      SPRING_DATASOURCE_PASSWORD: ${STATION_DB_PASSWORD:-changeme}
+      KAFKA_BOOTSTRAPSERVERS: kafka:9092
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWKSETURI: http://keycloak:8080/realms/charging-stations/protocol/openid-connect/certs
+      # Consul: только discovery (KV-config не используем — иначе import-check валит старт)
+      SPRING_CLOUD_CONSUL_HOST: consul-server
+      SPRING_CLOUD_CONSUL_CONFIG_ENABLED: "false"
+      SPRING_CLOUD_CONSUL_DISCOVERY_PREFERIPADDRESS: "true"
+    networks: [charging-stations-network]
+    depends_on:
+      station-controller-db:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      keycloak:
+        condition: service_started
+
+  station-integration-service:
+    build:
+      context: .
+      dockerfile: Dockerfile-services
+      args:
+        JAR_FILE: station-integration-service/target/station-integration-service-1.0-SNAPSHOT-exec.jar
+    container_name: station-integration-service
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      KAFKA_BOOTSTRAPSERVERS: kafka:9092
+      STEVE_URL: http://app:8180/steve
+      # Листенер ocpp.requests читает Acknowledgment вручную → нужен MANUAL ack-mode
+      # (в docker-профиле его не было, только в consul-профиле — отсюда падение зарядки).
+      SPRING_KAFKA_LISTENER_ACKMODE: MANUAL_IMMEDIATE
+      # Consul: только discovery (KV-config не используем — иначе import-check валит старт)
+      SPRING_CLOUD_CONSUL_HOST: consul-server
+      SPRING_CLOUD_CONSUL_CONFIG_ENABLED: "false"
+      SPRING_CLOUD_CONSUL_DISCOVERY_PREFERIPADDRESS: "true"
+    networks: [charging-stations-network]
+    depends_on:
+      kafka:
+        condition: service_healthy
+      app:
+        condition: service_started
+
+  state-updater-service:
+    build:
+      context: .
+      dockerfile: Dockerfile-services
+      args:
+        JAR_FILE: state-updater-service/target/state-updater-service-1.0-SNAPSHOT-exec.jar
+    container_name: state-updater-service
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      SPRING_PROFILES_ACTIVE: consul
+      KAFKA_BROKERS: kafka:9092
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      # consul.host = адрес АГЕНТА consul; discovery.prefer-ip = объявлять IP контейнера
+      SPRING_CLOUD_CONSUL_HOST: consul-server
+      SPRING_CLOUD_CONSUL_DISCOVERY_PREFERIPADDRESS: "true"
+      APP_SERVICES_STATIONCONTROLLSERVICE_URL: http://station-controll-service:8001
+    networks: [charging-stations-network]
+    depends_on:
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      consul-server:
+        condition: service_started
+
+  websocket-service:
+    build:
+      context: .
+      dockerfile: Dockerfile-services
+      args:
+        JAR_FILE: websocket-service/target/websocket-service-1.0-SNAPSHOT-exec.jar
+    container_name: websocket-service
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      KAFKA_BOOTSTRAP: kafka:9092
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      # consul.host = адрес АГЕНТА consul; discovery.prefer-ip = объявлять IP контейнера
+      SPRING_CLOUD_CONSUL_HOST: consul-server
+      SPRING_CLOUD_CONSUL_DISCOVERY_PREFERIPADDRESS: "true"
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWKSETURI: http://keycloak:8080/realms/charging-stations/protocol/openid-connect/certs
+    networks: [charging-stations-network]
+    depends_on:
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      consul-server:
+        condition: service_started
+      keycloak:
+        condition: service_started
+
+  contractor-admin-service:
+    build:
+      context: .
+      dockerfile: Dockerfile-services
+      args:
+        JAR_FILE: contractor-admin-service/target/contractor-admin-service-1.0-SNAPSHOT-exec.jar
+    container_name: contractor-admin-service
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      SPRING_R2DBC_URL: r2dbc:postgresql://contractor-admin-service-db:5432/contractordb
+      SPRING_R2DBC_USERNAME: contractor
+      SPRING_R2DBC_PASSWORD: ${CONTRACTOR_DB_PASSWORD:-changeme}
+      SPRING_LIQUIBASE_URL: jdbc:postgresql://contractor-admin-service-db:5432/contractordb
+      SPRING_LIQUIBASE_USER: contractor
+      SPRING_LIQUIBASE_PASSWORD: ${CONTRACTOR_DB_PASSWORD:-changeme}
+      SPRING_KAFKA_BOOTSTRAPSERVERS: kafka:9092
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWKSETURI: http://keycloak:8080/realms/charging-stations/protocol/openid-connect/certs
+      SERVICES_STATIONCONTROLL_URL: http://station-controll-service:8001
+      SERVICES_USERSERVICE_URL: http://user-service:8005
+    networks: [charging-stations-network]
+    depends_on:
+      contractor-admin-service-db:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      keycloak:
+        condition: service_started
+
+  user-service:
+    build:
+      context: .
+      dockerfile: Dockerfile-services
+      args:
+        JAR_FILE: user-service/target/user-service-1.0-SNAPSHOT-exec.jar
+    container_name: user-service
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      SPRING_PROFILES_ACTIVE: consul
+      SPRING_DATASOURCE_URL: jdbc:postgresql://user-service-db:5432/userdb
+      SPRING_DATASOURCE_USERNAME: user
+      SPRING_DATASOURCE_PASSWORD: ${USER_DB_PASSWORD:-changeme}
+      SPRING_R2DBC_URL: r2dbc:postgresql://user-service-db:5432/userdb
+      SPRING_R2DBC_USERNAME: user
+      SPRING_R2DBC_PASSWORD: ${USER_DB_PASSWORD:-changeme}
+      SPRING_LIQUIBASE_URL: jdbc:postgresql://user-service-db:5432/userdb
+      SPRING_LIQUIBASE_USER: user
+      SPRING_LIQUIBASE_PASSWORD: ${USER_DB_PASSWORD:-changeme}
+      SPRING_KAFKA_BOOTSTRAPSERVERS: kafka:9092
+      SPRING_CLOUD_CONSUL_HOST: consul-server
+      KEYCLOAK_AUTHSERVERURL: http://keycloak:8080
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUERURI: http://${SERVER_HOST:-localhost}/realms/charging-stations
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWKSETURI: http://keycloak:8080/realms/charging-stations/protocol/openid-connect/certs
+      APP_BASEURL: http://${SERVER_HOST:-localhost}/user
+      KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_CLIENT_SECRET:-lk6oom9CCmAsItuL9P5uSKI7vd0HuIBa}
+      EMAIL_USERNAME: ${EMAIL_USERNAME:-flagman-inc@yandex.ru}
+      EMAIL_PASSWORD: ${EMAIL_PASSWORD:-garzkehjpethfhye}
+    networks: [charging-stations-network]
+    depends_on:
+      user-service-db:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      consul-server:
+        condition: service_started
+      keycloak:
+        condition: service_started
+
+  notification-service:
+    build:
+      context: .
+      dockerfile: Dockerfile-services
+      args:
+        JAR_FILE: notification-service/target/notification-service-1.0-SNAPSHOT-exec.jar
+    container_name: notification-service
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      SPRING_KAFKA_BOOTSTRAPSERVERS: kafka:9092
+      SPRING_MAIL_USERNAME: ${EMAIL_USERNAME:-flagman-inc@yandex.ru}
+      SPRING_MAIL_PASSWORD: ${EMAIL_PASSWORD:-garzkehjpethfhye}
+      APP_BASEURL: http://${SERVER_HOST:-localhost}
+    networks: [charging-stations-network]
+    depends_on:
+      kafka:
+        condition: service_healthy
+
+  payment-service:
+    build:
+      context: .
+      dockerfile: Dockerfile-services
+      args:
+        JAR_FILE: payment-service/target/payment-service-1.0-SNAPSHOT-exec.jar
+    container_name: payment-service
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      R2DBC_URL: r2dbc:postgresql://payment-service-db:5432/paymentdb
+      R2DBC_USERNAME: payment
+      R2DBC_PASSWORD: ${PAYMENT_DB_PASSWORD:-changeme}
+      JDBC_URL: jdbc:postgresql://payment-service-db:5432/paymentdb
+      JDBC_USERNAME: payment
+      JDBC_PASSWORD: ${PAYMENT_DB_PASSWORD:-changeme}
+      SPRING_LIQUIBASE_URL: jdbc:postgresql://payment-service-db:5432/paymentdb
+      SPRING_LIQUIBASE_USER: payment
+      SPRING_LIQUIBASE_PASSWORD: ${PAYMENT_DB_PASSWORD:-changeme}
+      KAFKA_BOOTSTRAP: kafka:9092
+      JWK_SET_URI: http://keycloak:8080/realms/charging-stations/protocol/openid-connect/certs
+      DENGI_API_URL: ${DENGI_API_URL:-https://mw-api-test.dengi.kg/api/json/json.php}
+      DENGI_SID: ${DENGI_SID:-3567780484}
+      DENGI_PASSWORD: "${DENGI_PASSWORD:-@PDI(F239#H7PGD}"
+      DENGI_TEST: ${DENGI_TEST:-1}
+      DENGI_RESULT_URL: http://${SERVER_HOST:-localhost}/payment/api/v1/payments/callback
+    networks: [charging-stations-network]
+    depends_on:
+      payment-service-db:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      keycloak:
+        condition: service_started
+
+  booking-service:
+    build:
+      context: .
+      dockerfile: Dockerfile-services
+      args:
+        JAR_FILE: booking-service/target/booking-service-1.0-SNAPSHOT-exec.jar
+    container_name: booking-service
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      SPRING_R2DBC_URL: r2dbc:postgresql://booking-service-db:5432/bookingdb
+      SPRING_R2DBC_USERNAME: booking
+      SPRING_R2DBC_PASSWORD: ${BOOKING_DB_PASSWORD:-changeme}
+      SPRING_LIQUIBASE_URL: jdbc:postgresql://booking-service-db:5432/bookingdb
+      SPRING_LIQUIBASE_USER: booking
+      SPRING_LIQUIBASE_PASSWORD: ${BOOKING_DB_PASSWORD:-changeme}
+      SPRING_KAFKA_BOOTSTRAPSERVERS: kafka:9092
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWKSETURI: http://keycloak:8080/realms/charging-stations/protocol/openid-connect/certs
+    networks: [charging-stations-network]
+    depends_on:
+      booking-service-db:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      keycloak:
+        condition: service_started
+
+  api-gateway-service:
+    build:
+      context: .
+      dockerfile: Dockerfile-services
+      args:
+        JAR_FILE: api-gateway-service/target/api-gateway-service-1.0-SNAPSHOT-exec.jar
+    container_name: api-gateway-service
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      STATION_INTEGRATION_URI: http://station-integration-service:8000
+      STATION_CONTROLL_URI: http://station-controll-service:8001
+      STATE_UPDATER_URI: http://state-updater-service:8002
+      WEBSOCKET_URI: http://websocket-service:8003
+      CONTRACTOR_ADMIN_URI: http://contractor-admin-service:8004
+      USER_URI: http://user-service:8005
+      PAYMENT_URI: http://payment-service:8007
+      BOOKING_URI: http://booking-service:8008
+    networks: [charging-stations-network]
+    depends_on:
+      - station-controll-service
+      - station-integration-service
+      - state-updater-service
+      - websocket-service
+      - contractor-admin-service
+      - user-service
+      - payment-service
+      - booking-service
+
+  # ============================ Reverse proxy ============================
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: nginx
+    restart: unless-stopped
+    logging: *default-logging
+    ports:
+      - "80:80"
+      # - "443:443"   # включить вместе с ssl-блоком в nginx/conf.d/default.conf
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      # - ./nginx/certs:/etc/nginx/certs:ro   # сертификаты для HTTPS (позже)
+    networks: [charging-stations-network]
+    depends_on:
+      - api-gateway-service
+      - keycloak
+
+networks:
+  charging-stations-network:
+    driver: bridge
+
+volumes:
+  keycloak-db-data:
+  station-db-data:
+  user-db-data:
+  payment-db-data:
+  booking-db-data:
+  contractor-db-data:
+  mariadb_data:
+  redis-data:

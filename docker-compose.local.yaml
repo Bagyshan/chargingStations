@@ -1,0 +1,331 @@
+services:
+
+  keycloak-db:
+    image: postgres:16
+    container_name: keycloak-db
+    environment:
+      POSTGRES_DB: keycloak
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD: changeme
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=C --lc-ctype=C"
+    volumes:
+      - keycloak-db-data:/var/lib/postgresql/data
+    networks:
+      - charging-stations-network
+    ports:
+      - "5434:5432"
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U keycloak -d keycloak" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:24.0.2
+    container_name: keycloak
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://keycloak-db:5432/keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: changeme
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: changeme
+      KC_HOSTNAME: localhost
+      KC_HOSTNAME_PORT: 8080
+      KC_HOSTNAME_STRICT: "false"
+      KC_HOSTNAME_STRICT_HTTPS: "false"
+      KC_HOSTNAME_STRICT_BACKCHANNEL: true
+      KC_HTTP_ENABLED: true
+      KC_PROXY_HEADERS: xforwarded
+      KC_LOG_LEVEL: INFO
+      QUARKUS_TRANSACTION_MANAGER_ENABLE_RECOVERY: "true"
+    command: start-dev --import-realm
+    volumes:
+      - ./keycloak-realm-config:/opt/keycloak/data/import
+    ports:
+      - "8080:8080"
+    depends_on:
+      keycloak-db:
+        condition: service_healthy
+    networks:
+      - charging-stations-network
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8080/health/ready" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  user-service-db:
+    image: postgres:16
+    container_name: user-service-db
+    environment:
+      POSTGRES_DB: userdb
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: changeme
+    volumes:
+      - user-db-data:/var/lib/postgresql/data
+      - ./init-user-db.sql:/docker-entrypoint-initdb.d/init-user-db.sql:ro
+    networks:
+      - charging-stations-network
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U user -d userdb" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+
+  contractor-admin-service-db:
+    image: postgres:16
+    container_name: contractor-admin-service-db
+    environment:
+      POSTGRES_DB: contractordb
+      POSTGRES_USER: contractor
+      POSTGRES_PASSWORD: changeme
+    volumes:
+      - contractor-db-data:/var/lib/postgresql/data
+      - ./init-user-db.sql:/docker-entrypoint-initdb.d/init-user-db.sql:ro
+    networks:
+      - charging-stations-network
+    ports:
+      - "5437:5432"
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U user -d userdb" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+
+  payment-service-db:
+    image: postgres:16
+    container_name: payment-service-db
+    environment:
+      POSTGRES_DB: paymentdb
+      POSTGRES_USER: payment
+      POSTGRES_PASSWORD: changeme
+    volumes:
+      - payment-db-data:/var/lib/postgresql/data
+    networks:
+      - charging-stations-network
+    ports:
+      - "5435:5432"
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U payment -d paymentdb" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  booking-service-db:
+    image: postgres:16
+    container_name: booking-service-db
+    environment:
+      POSTGRES_DB: bookingdb
+      POSTGRES_USER: booking
+      POSTGRES_PASSWORD: changeme
+    volumes:
+      - booking-db-data:/var/lib/postgresql/data
+    networks:
+      - charging-stations-network
+    ports:
+      - "5436:5432"
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U booking -d bookingdb" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+
+  station-controller-db:
+    image: postgis/postgis:16-3.4
+    container_name: station-controller-db
+    environment:
+      POSTGRES_DB: stationdb
+      POSTGRES_USER: station
+      POSTGRES_PASSWORD: changeme
+    volumes:
+      - station-db-data:/var/lib/postgresql/data
+      - ./docker-entrypoint-initdb.d/init-postgis.sql:/docker-entrypoint-initdb.d/init-postgis.sql
+    ports:
+      - "5432:5432"
+    networks:
+      - charging-stations-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U station -d stationdb"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  db:
+    # Pinning MariaDB to point release 10.4.30 works around the issues with the
+    # database migrations seen with 10.4.31 in issue #1212.
+    #
+    # TODO: Get database migrations to work with the latest point releases of
+    # MariaDB 10.4.
+    image: mariadb:10.4.30
+    restart: unless-stopped
+    ports:
+      - 3306:3306
+    environment:
+      MYSQL_RANDOM_ROOT_PASSWORD: "yes"
+      MYSQL_DATABASE: stevedb
+      MYSQL_USER: steve
+      MYSQL_PASSWORD: changeme
+    volumes:
+      - mariadb_data:/var/lib/mysql
+    networks:
+      charging-stations-network:
+        aliases:
+          - mariadb
+  app:
+    restart: unless-stopped
+    build: ./station-steve
+    volumes:
+      - ./station-steve:/code
+    ports:
+      - "8180:8180"
+      - "8443:8443"
+    depends_on:
+      - db
+    networks:
+      - charging-stations-network
+
+  redis:
+    container_name: redis
+    image: redis:7.2
+    restart: always
+    ports:
+      - "6379:6379"
+    networks:
+      - charging-stations-network
+
+
+  consul-server:
+    image: consul:1.15
+    container_name: consul-server
+    ports:
+      - "8500:8500"
+      - "8600:8600/udp"
+    environment:
+      - CONSUL_BIND_INTERFACE=eth0
+      - CONSUL_HTTP_ADDR=0.0.0.0:8500
+    command:
+      - "agent"
+      - "-server"
+      - "-bootstrap"
+      - "-ui"
+      - "-client=0.0.0.0"
+      - "-log-level=DEBUG"
+    networks:
+      - charging-stations-network
+
+  consul-agent-1:
+    image: consul:1.15
+    container_name: consul-agent-1
+    depends_on:
+      - consul-server
+    environment:
+      - CONSUL_BIND_INTERFACE=eth0
+    command:
+      - "agent"
+      - "-retry-join=consul-server"
+      - "-ui"
+      - "-client=0.0.0.0"
+    networks:
+      - charging-stations-network
+
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+    networks:
+      - charging-stations-network
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+      - "29092:29092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    networks:
+      - charging-stations-network
+    healthcheck:
+      test: ["CMD", "kafka-topics", "--bootstrap-server", "kafka:9092", "--list"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: kafka-ui
+    ports:
+      - "8041:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+    networks:
+      - charging-stations-network
+
+  kafka-init:
+    image: confluentinc/cp-kafka:7.5.0
+    depends_on:
+      - kafka
+      - zookeeper
+    networks:
+      - charging-stations-network
+    command: >
+      sh -c "
+      kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic ocpp.responses --partitions 16 --replication-factor 1 --config cleanup.policy=delete --config min.insync.replicas=1 --config retention.ms=86400000 --config retention.bytes=1073741824 --config max.message.bytes=1048576 && 
+      kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic ocpp.requests --partitions 16 --replication-factor 1 --config cleanup.policy=delete --config min.insync.replicas=1 --config retention.ms=86400000 --config retention.bytes=1073741824 --config max.message.bytes=1048576 && 
+      kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic station.requests --partitions 16 --replication-factor 1 --config cleanup.policy=delete --config min.insync.replicas=1 --config retention.ms=86400000 --config retention.bytes=1073741824 --config max.message.bytes=1048576 && 
+      kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic station.state --partitions 16 --replication-factor 1 --config "cleanup.policy=compact" --config segment.bytes=1048576 --config segment.ms=30240000000 --config min.cleanable.dirty.ratio=0.3 &&
+      kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic station.meter.values --partitions 16 --replication-factor 1 --config "cleanup.policy=compact" --config segment.bytes=1048576 --config segment.ms=30240000000 --config min.cleanable.dirty.ratio=0.3 &&
+      kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic station.status --partitions 16 --replication-factor 1 --config cleanup.policy=delete --config min.insync.replicas=1 --config retention.ms=86400000 --config retention.bytes=1073741824 --config max.message.bytes=1048576 &&
+      kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic station.connectivity --partitions 16 --replication-factor 1 --config cleanup.policy=delete --config min.insync.replicas=1 --config retention.ms=86400000 --config retention.bytes=1073741824 --config max.message.bytes=1048576 &&
+      kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic station.alerts --partitions 16 --replication-factor 1 --config cleanup.policy=delete --config min.insync.replicas=1 --config retention.ms=86400000 --config retention.bytes=1073741824 --config max.message.bytes=1048576 &&
+      kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic booking.payment.requests --partitions 16 --replication-factor 1 --config cleanup.policy=delete --config min.insync.replicas=1 --config retention.ms=86400000 --config retention.bytes=1073741824 --config max.message.bytes=1048576 && 
+      kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic booking.payment.responses --partitions 16 --replication-factor 1 --config cleanup.policy=delete --config min.insync.replicas=1 --config retention.ms=86400000 --config retention.bytes=1073741824 --config max.message.bytes=1048576 &&
+      kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic booking.station.requests --partitions 16 --replication-factor 1 --config cleanup.policy=delete --config min.insync.replicas=1 --config retention.ms=86400000 --config retention.bytes=1073741824 --config max.message.bytes=1048576 &&
+      kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic booking.station.responses --partitions 16 --replication-factor 1 --config cleanup.policy=delete --config min.insync.replicas=1 --config retention.ms=86400000 --config retention.bytes=1073741824 --config max.message.bytes=1048576 &&
+      kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic booking.state --partitions 16 --replication-factor 1 --config cleanup.policy=delete --config min.insync.replicas=1 --config retention.ms=86400000 --config retention.bytes=1073741824 --config max.message.bytes=1048576 &&
+      kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic booking.events --partitions 16 --replication-factor 1 --config cleanup.policy=delete --config min.insync.replicas=1 --config retention.ms=86400000 --config retention.bytes=1073741824 --config max.message.bytes=1048576 &&
+      kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic payment.events --partitions 16 --replication-factor 1 --config cleanup.policy=delete --config min.insync.replicas=1 --config retention.ms=86400000 --config retention.bytes=1073741824 --config max.message.bytes=1048576 &&
+      kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic charging.payment.requests --partitions 16 --replication-factor 1 --config cleanup.policy=delete --config min.insync.replicas=1 --config retention.ms=86400000 --config retention.bytes=1073741824 --config max.message.bytes=1048576 &&
+      kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic charging.payment.responses --partitions 16 --replication-factor 1 --config cleanup.policy=delete --config min.insync.replicas=1 --config retention.ms=86400000 --config retention.bytes=1073741824 --config max.message.bytes=1048576 &&
+      kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic transaction.events --partitions 16 --replication-factor 1 --config cleanup.policy=delete --config min.insync.replicas=1 --config retention.ms=86400000 --config retention.bytes=1073741824 --config max.message.bytes=1048576 &&
+      kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic charging.user.status --partitions 16 --replication-factor 1 --config cleanup.policy=delete --config min.insync.replicas=1 --config retention.ms=86400000 --config retention.bytes=1073741824 --config max.message.bytes=1048576 &&
+      kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic station.hourly.tariffs --partitions 1 --replication-factor 1 --config cleanup.policy=delete --config min.insync.replicas=1 --config retention.ms=86400000 --config retention.bytes=1073741824 --config max.message.bytes=1048576
+      "
+
+
+
+networks:
+  charging-stations-network:
+    external: true
+
+volumes:
+  mariadb_data:
+  station-db-data:
+  db-data:
+    external: false
+  keycloak-db-data:
+  user-db-data:
+  payment-db-data:
+  booking-db-data:
+  contractor-db-data:

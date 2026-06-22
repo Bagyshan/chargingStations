@@ -22,5 +22,6 @@ public class StartTransactionCreateEvent {
     private String startValue;
     private ActionType actionType;
     private TransactionStatus status;
+    private String userId;
     private Instant startTimestamp;
 }

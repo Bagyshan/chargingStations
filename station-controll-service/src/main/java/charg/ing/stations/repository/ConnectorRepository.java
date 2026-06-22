@@ -16,7 +16,8 @@ import java.util.Optional;
 public interface ConnectorRepository extends JpaRepository<ConnectorEntity, Long> {
 
     boolean existsByConnectorId(int connectorId);
-    Optional<ConnectorEntity> findByConnectorId(int connectorId);
+    boolean existsByConnectorIdAndChargeBoxId(int connectorId, String chargeBoxId);
+    ConnectorEntity findByConnectorId(int connectorId);
 
     @Modifying
     @Query("SELECT c.status FROM ConnectorEntity c WHERE c.chargeBoxId = :chargeBoxId AND c.connectorId = :connectorId")
@@ -26,6 +27,8 @@ public interface ConnectorRepository extends JpaRepository<ConnectorEntity, Long
 
     ConnectorEntity findByConnectorIdAndChargeBoxId(int connectorId, String chargeBoxId);
 
+
+    Optional<ConnectorEntity> findByChargeBoxIdAndConnectorId(String chargeBoxId, int connectorId);
 
     @Modifying
     @Query(value = "UPDATE connector SET version = version + 1 " +

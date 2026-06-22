@@ -75,7 +75,9 @@ public class SteveClient {
 
     public Mono<ResponseEntity<String>> getStatus() {
         return webClient.get()
-                .uri("/api/v1/connectors")
+                // .path() дописывает к base-path (учитывает context-path /steve);
+                // строковый "/api/..." затёр бы префикс /steve.
+                .uri(uriBuilder -> uriBuilder.path("/api/v1/connectors").build())
                 .retrieve()
                 .toEntity(String.class);
     }

@@ -1,8 +1,20 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="Encoding">
+    <file url="file://$PROJECT_DIR$/api-gateway-service/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/api-gateway-service/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/booking-service/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/booking-service/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/contractor-admin-service/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/contractor-admin-service/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/notification-service/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/notification-service/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/payment-service/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/payment-service/src/main/resources" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/src/main/java" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/state-updater-service/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/state-updater-service/src/main/resources" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/station-controll-service/src/main/java" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/station-controll-service/src/main/resources" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/station-integration-service/src/main/java" charset="UTF-8" />
@@ -10,5 +22,9 @@
     <file url="file://$PROJECT_DIR$/station-steve/src/main/java" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/station-steve/src/main/resources" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/station-steve/src/main/resources/config/prod" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/user-service/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/user-service/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/websocket-service/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/websocket-service/src/main/resources" charset="UTF-8" />
   </component>
 </project>

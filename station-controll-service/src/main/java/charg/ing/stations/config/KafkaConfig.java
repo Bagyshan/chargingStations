@@ -1,6 +1,7 @@
 package charg.ing.stations.config;
 
 
+import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.serialization.StringSerializer;
 import org.springframework.beans.factory.annotation.Value;
@@ -34,6 +35,8 @@ public class KafkaConfig {
         configProps.put(ProducerConfig.MAX_IN_FLIGHT_REQUESTS_PER_CONNECTION, 1);
         configProps.put(ProducerConfig.RETRIES_CONFIG, Integer.MAX_VALUE);
         configProps.put(ProducerConfig.DELIVERY_TIMEOUT_MS_CONFIG, 120000);
+//        configProps.put(ConsumerConfig.ISOLATION_LEVEL_CONFIG, "read_committed");
+//        configProps.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, false);
 
         return new DefaultKafkaProducerFactory<>(configProps);
     }

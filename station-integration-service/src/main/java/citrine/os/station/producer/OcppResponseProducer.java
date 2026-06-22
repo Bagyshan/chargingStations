@@ -1,6 +1,7 @@
 package citrine.os.station.producer;
 
 
+import citrine.os.station.dto.OcppResponse;
 import citrine.os.station.dto.OcppStartResponse;
 import citrine.os.station.dto.OcppStopResponse;
 import lombok.RequiredArgsConstructor;
@@ -12,14 +13,14 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 public class OcppResponseProducer {
 
-    private final KafkaTemplate<String, OcppStartResponse> kafkaStartTemplate;
+    private final KafkaTemplate<String, OcppResponse> kafkaTemplate;
     private final KafkaTemplate<String, OcppStopResponse> kafkaStopTemplate;
 
     @Value("${topics.ocpp.responses}")
     private String topicName;
 
-    public void sendStartResponse(OcppStartResponse response) {
-        kafkaStartTemplate.send(topicName, response.getChargeBoxId()+"/"+response.getConnectorId(), response)
+    public void sendStartResponse(OcppResponse response) {
+        kafkaTemplate.send(topicName, response.getChargeBoxId()+"/"+response.getConnectorId(), response)
                 .whenComplete((result, ex) -> {
                     if (ex != null) {
                         System.err.println("❌ Ошибка при отправке в Kafka: " + ex.getMessage());
@@ -32,8 +33,8 @@ public class OcppResponseProducer {
                 });
     }
 
-    public void sendStopResponse(OcppStopResponse response) {
-        kafkaStopTemplate.send(topicName, response.getChargeBoxId()+"/"+response.getConnectorId(), response)
+    public void sendStopResponse(OcppResponse response) {
+        kafkaTemplate.send(topicName, response.getChargeBoxId()+"/"+response.getConnectorId(), response)
                 .whenComplete((result, ex) -> {
                     if (ex != null) {
                         System.err.println("❌ Ошибка при отправке в Kafka: " + ex.getMessage());

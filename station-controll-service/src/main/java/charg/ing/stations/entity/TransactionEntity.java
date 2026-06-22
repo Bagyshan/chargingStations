@@ -4,6 +4,7 @@ import charg.ing.stations.enums.TransactionStatus;
 import jakarta.persistence.*;
 import lombok.*;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 
 @Entity
@@ -48,11 +49,24 @@ public class TransactionEntity {
     @Column(name = "reason", length = 255)
     private String reason;
 
+    @Column(name = "user_id", length = 100)
+    private String userId;
+
+    @Column(name = "total_sum")
+    private BigDecimal totalSum;
+
+    @Column(name = "price_per_kwh")
+    private BigDecimal pricePerKwh;
+
+    @Column(name = "max_kw_quantity")
+    private BigDecimal maxKwQuantity;
+
     @Column(name = "created_at")
     private Instant createdAt;
 
     @Column(name = "updated_at")
     private Instant updatedAt;
+
 
     // Relationships
     @ManyToOne(fetch = FetchType.LAZY)

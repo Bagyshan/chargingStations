@@ -1,0 +1,246 @@
+---- KEYS[1] = stationKey, KEYS[2] = connectorKey, KEYS[3] = stations:geo, KEYS[4] = stations:index
+---- ARGV[1] = incomingVersion, ARGV[2] = connectorFieldsJson, ARGV[3] = stationFieldsJson, ARGV[4] = streamPayloadJson
+--
+--local stationKey = KEYS[1]
+--local connectorKey = KEYS[2]
+--local geoKey = KEYS[3]
+--local indexKey = KEYS[4]
+--local incomingVersion = tonumber(ARGV[1])
+--
+---- УБИРАЕМ ВСЕ redis.log С КОНСТАНТАМИ - используем простые логи
+---- redis.log(redis.LOG_NOTICE, "=== LUA SCRIPT STARTED ===")
+--
+---- ПРАВИЛЬНАЯ ПРОВЕРКА СУЩЕСТВУЮЩИХ ДАННЫХ
+--local existingVersionStr = redis.call('HGET', connectorKey, 'version')
+--local existingVersion = nil
+--
+--if existingVersionStr ~= false and existingVersionStr ~= nil then
+--    existingVersion = tonumber(existingVersionStr)
+--    if existingVersion == nil then
+--        existingVersion = 0
+--    end
+--else
+--    existingVersion = nil
+--end
+--
+---- КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: если данных нет, всегда обновляем
+--if existingVersion == nil then
+--    -- Продолжаем обновление
+--elseif existingVersion >= incomingVersion then
+--    return {0, existingVersion}
+--else
+--    -- Продолжаем обновление
+--end
+--
+---- Декодируем JSON поля
+--local connectorFields = cjson.decode(ARGV[2])
+--local stationFields = cjson.decode(ARGV[3])
+--local streamPayload = cjson.decode(ARGV[4])
+--
+---- Обновляем поля коннектора
+--if type(connectorFields) == "table" then
+--    for field, value in pairs(connectorFields) do
+--        if value ~= nil then
+--            redis.call('HSET', connectorKey, field, tostring(value))
+--        end
+--    end
+--else
+--    return {0, existingVersion or 0}
+--end
+--
+---- Обновляем поля станции
+--if type(stationFields) == "table" then
+--    for field, value in pairs(stationFields) do
+--        if value ~= nil then
+--            redis.call('HSET', stationKey, field, tostring(value))
+--        end
+--    end
+--else
+--    return {0, existingVersion or 0}
+--end
+--
+---- Добавляем станцию в общий индекс
+--if stationFields.id then
+--    redis.call('SADD', indexKey, stationFields.id)
+--end
+--
+---- Обновляем гео-индекс если есть координаты
+--if stationFields.lon and stationFields.lat then
+--    redis.call('GEOADD', geoKey, stationFields.lon, stationFields.lat, stationFields.id)
+--end
+--
+---- Обновляем индекс по статусам станций
+--if stationFields.stationStatus and stationFields.id then
+--    local oldStatus = redis.call('HGET', stationKey, 'stationStatus')
+--    if oldStatus and oldStatus ~= stationFields.stationStatus then
+--        redis.call('SREM', 'stations:status:' .. oldStatus, stationFields.id)
+--    end
+--    redis.call('SADD', 'stations:status:' .. stationFields.stationStatus, stationFields.id)
+--end
+--
+---- Обновляем индекс по статусам коннекторов
+--if connectorFields.status then
+--    local oldConnectorStatus = redis.call('HGET', connectorKey, 'status')
+--    if oldConnectorStatus and oldConnectorStatus ~= connectorFields.status then
+--        redis.call('SREM', 'connectors:status:' .. oldConnectorStatus, connectorKey)
+--    end
+--    redis.call('SADD', 'connectors:status:' .. connectorFields.status, connectorKey)
+--end
+--
+---- Добавляем событие в Redis Stream для WebSocket рассылки
+--if streamPayload and type(streamPayload) == "table" then
+--    redis.call('XADD', 'stream:station:events', '*',
+--            'eventType', streamPayload.eventType or 'unknown',
+--            'stationId', streamPayload.stationId or 'unknown',
+--            'connectorId', tostring(streamPayload.connectorId or 'unknown'),
+--            'status', streamPayload.status or 'unknown',
+--            'version', tostring(streamPayload.version or 'unknown'),
+--            'timestamp', streamPayload.timestamp or 'unknown'
+--    )
+--end
+--
+---- Устанавливаем TTL для ключей (24 часа)
+--redis.call('EXPIRE', stationKey, 86400)
+--redis.call('EXPIRE', connectorKey, 86400)
+--
+--return {1, incomingVersion}  -- {updated: 1, new_version}
+
+
+
+
+
+
+
+
+
+
+--
+---- KEYS[1] = stationKey, KEYS[2] = connectorKey, KEYS[3] = stations:geo, KEYS[4] = stations:index
+---- ARGV[1] = incomingVersion, ARGV[2] = connectorFieldsJson, ARGV[3] = stationFieldsJson, ARGV[4] = streamPayloadJson
+--
+--local stationKey = KEYS[1]
+--local connectorKey = KEYS[2]
+--local geoKey = KEYS[3]
+--local indexKey = KEYS[4]
+--
+---- ВСЕГДА ОБНОВЛЯЕМ ДАННЫЕ ПРИ ИНИЦИАЛИЗАЦИИ
+--local connectorFields = cjson.decode(ARGV[2])
+--local stationFields = cjson.decode(ARGV[3])
+--local streamPayload = cjson.decode(ARGV[4])
+--
+---- Обновляем поля коннектора
+--for field, value in pairs(connectorFields) do
+--    if value ~= nil then
+--        redis.call('HSET', connectorKey, field, tostring(value))
+--    end
+--end
+--
+---- Обновляем поля станции
+--for field, value in pairs(stationFields) do
+--    if value ~= nil then
+--        redis.call('HSET', stationKey, field, tostring(value))
+--    end
+--end
+--
+---- Добавляем станцию в общий индекс
+--if stationFields.id then
+--    redis.call('SADD', indexKey, stationFields.id)
+--end
+--
+---- Обновляем гео-индекс если есть координаты
+--if stationFields.lon and stationFields.lat then
+--    redis.call('GEOADD', geoKey, stationFields.lon, stationFields.lat, stationFields.id)
+--end
+--
+---- Обновляем индекс по статусам станций
+--if stationFields.stationStatus and stationFields.id then
+--    local oldStatus = redis.call('HGET', stationKey, 'stationStatus')
+--    if oldStatus and oldStatus ~= stationFields.stationStatus then
+--        redis.call('SREM', 'stations:status:' .. oldStatus, stationFields.id)
+--    end
+--    redis.call('SADD', 'stations:status:' .. stationFields.stationStatus, stationFields.id)
+--end
+--
+---- Обновляем индекс по статусам коннекторов
+--if connectorFields.status then
+--    local oldConnectorStatus = redis.call('HGET', connectorKey, 'status')
+--    if oldConnectorStatus and oldConnectorStatus ~= connectorFields.status then
+--        redis.call('SREM', 'connectors:status:' .. oldConnectorStatus, connectorKey)
+--    end
+--    redis.call('SADD', 'connectors:status:' .. connectorFields.status, connectorKey)
+--end
+--
+---- Добавляем событие в Redis Stream для WebSocket рассылки
+--if streamPayload then
+--    redis.call('XADD', 'stream:station:events', '*',
+--            'eventType', streamPayload.eventType or 'update',
+--            'stationId', streamPayload.stationId or 'unknown',
+--            'connectorId', tostring(streamPayload.connectorId or 'unknown'),
+--            'status', streamPayload.status or 'unknown',
+--            'version', tostring(streamPayload.version or 'unknown'),
+--            'timestamp', streamPayload.timestamp or 'unknown'
+--    )
+--end
+--
+---- Устанавливаем TTL для ключей (24 часа)
+--redis.call('EXPIRE', stationKey, 86400)
+--redis.call('EXPIRE', connectorKey, 86400)
+--
+--return {1, 1}  -- Всегда возвращаем успех
+
+
+
+
+
+
+
+
+
+
+
+
+---- УПРОЩЕННЫЙ РАБОЧИЙ СКРИПТ
+--local stationKey = KEYS[1]
+--local connectorKey = KEYS[2]
+--local geoKey = KEYS[3]
+--local indexKey = KEYS[4]
+--local incomingVersion = tonumber(ARGV[1])
+--
+--redis.log(redis.LOG_NOTICE, "SIMPLE SCRIPT: Processing version " .. tostring(incomingVersion))
+--
+---- Всегда обновляем при инициализации (версионность будет работать позже)
+--local connectorFields = cjson.decode(ARGV[2])
+--local stationFields = cjson.decode(ARGV[3])
+--local streamPayload = cjson.decode(ARGV[4])
+--
+---- Коннектор
+--for field, value in pairs(connectorFields) do
+--    if value ~= nil then
+--        redis.call('HSET', connectorKey, field, tostring(value))
+--    end
+--end
+--
+---- Станция
+--for field, value in pairs(stationFields) do
+--    if value ~= nil then
+--        redis.call('HSET', stationKey, field, tostring(value))
+--    end
+--end
+--
+---- Базовые индексы
+--if stationFields.id then
+--    redis.call('SADD', indexKey, stationFields.id)
+--end
+--
+---- Stream (опционально)
+--if streamPayload then
+--    redis.call('XADD', 'stream:station:events', '*',
+--            'eventType', streamPayload.eventType or 'update',
+--            'stationId', streamPayload.stationId or 'unknown',
+--            'connectorId', tostring(streamPayload.connectorId or 'unknown'),
+--            'status', streamPayload.status or 'unknown',
+--            'version', tostring(streamPayload.version or 'unknown')
+--    )
+--end
+--
+--return {1, incomingVersion}

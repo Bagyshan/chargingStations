@@ -1,0 +1,28 @@
+spring:
+  config:
+    activate:
+      on-profile: docker
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAPSERVERS:kafka:9092}
+    consumer:
+      group-id: station-integration-service
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: "*"
+        # продьюсер (station-controll) шлёт без type-headers → нужен дефолтный тип,
+        # иначе JSON приходит как String и не маппится в Map в OcppRequestConsumer
+        spring.json.value.default.type: java.util.Map
+        enable.auto.commit: false
+        auto.offset.reset: latest
+    listener:
+      ack-mode: MANUAL_IMMEDIATE
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+    properties:
+      spring.json.add.type.headers: false
+
+steve:
+  base-url: ${STEVE_URL:http://app:8180}

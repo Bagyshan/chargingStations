@@ -1,0 +1,53 @@
+spring:
+  application:
+    name: booking-service
+
+  r2dbc:
+    url: r2dbc:postgresql://localhost:5436/bookingdb
+    username: booking
+    password: changeme
+
+  liquibase:
+    enabled: true
+    change-log: classpath:db/changelog/db.changelog-master.xml
+    url: jdbc:postgresql://localhost:5436/bookingdb
+    user: booking
+    password: changeme
+
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          jwk-set-uri: http://localhost:8080/realms/charging-stations/protocol/openid-connect/certs
+
+  kafka:
+    bootstrap-servers: localhost:29092
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+    consumer:
+      group-id: booking-service-group-v2
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      auto-offset-reset: latest
+      properties:
+        spring.json.trusted.packages: "*"
+        spring.json.type.mapping: >
+          paymentRequest:charg.ing.stations.dto.kafka.PaymentRequest,
+          paymentResponse:charg.ing.stations.dto.kafka.PaymentResponse,
+          stationRequest:charg.ing.stations.dto.kafka.StationRequest,
+          stationResponse:charg.ing.stations.dto.kafka.StationResponse
+
+logging:
+  level:
+    io.r2dbc.postgresql.QUERY: DEBUG
+    org.springframework.security: DEBUG
+
+server:
+  port: 8008
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+  api-docs:
+    path: /api-docs

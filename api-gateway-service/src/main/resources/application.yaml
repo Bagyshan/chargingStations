@@ -1,0 +1,107 @@
+server:
+  port: ${PORT:8010}
+
+spring:
+  application:
+    name: api-gateway-service
+
+  cloud:
+    gateway:
+      # Каждый сервис проксируется под своим префиксом; StripPrefix=1 убирает префикс перед
+      # обращением к сервису. Благодаря этому Swagger UI на шлюзе тянет /<prefix>/v3/api-docs
+      # с того же origin (без CORS), а шлюз перенаправляет запрос на api-docs сервиса.
+      routes:
+        - id: station-integration-service
+          uri: ${STATION_INTEGRATION_URI:http://localhost:8000}
+          predicates:
+            - Path=/station-integration/**
+          filters:
+            - StripPrefix=1
+
+        - id: station-controll-service
+          uri: ${STATION_CONTROLL_URI:http://localhost:8001}
+          predicates:
+            - Path=/station-controll/**
+          filters:
+            - StripPrefix=1
+
+        - id: state-updater-service
+          uri: ${STATE_UPDATER_URI:http://localhost:8002}
+          predicates:
+            - Path=/state-updater/**
+          filters:
+            - StripPrefix=1
+
+        - id: websocket-service
+          uri: ${WEBSOCKET_URI:http://localhost:8003}
+          predicates:
+            - Path=/websocket/**
+          filters:
+            - StripPrefix=1
+
+        - id: contractor-admin-service
+          uri: ${CONTRACTOR_ADMIN_URI:http://localhost:8004}
+          predicates:
+            - Path=/contractor-admin/**
+          filters:
+            - StripPrefix=1
+
+        - id: user-service
+          uri: ${USER_URI:http://localhost:8005}
+          predicates:
+            - Path=/user/**
+          filters:
+            - StripPrefix=1
+
+        - id: payment-service
+          uri: ${PAYMENT_URI:http://localhost:8007}
+          predicates:
+            - Path=/payment/**
+          filters:
+            - StripPrefix=1
+
+        - id: booking-service
+          uri: ${BOOKING_URI:http://localhost:8008}
+          predicates:
+            - Path=/booking/**
+          filters:
+            - StripPrefix=1
+
+# Агрегированная документация. Дропдаун в Swagger UI шлюза перечисляет api-docs всех сервисов,
+# проксируемые через сам шлюз (тот же origin, поэтому без CORS-проблем).
+# booking-service и websocket-service отдают api-docs на /api-docs, остальные — на /v3/api-docs.
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    disable-swagger-default-url: true
+    urls-primary-name: station-controll-service
+    urls:
+      - name: station-controll-service
+        url: /station-controll/v3/api-docs
+      - name: station-integration-service
+        url: /station-integration/v3/api-docs
+      - name: state-updater-service
+        url: /state-updater/v3/api-docs
+      - name: contractor-admin-service
+        url: /contractor-admin/v3/api-docs
+      - name: user-service
+        url: /user/v3/api-docs
+      - name: payment-service
+        url: /payment/v3/api-docs
+      - name: booking-service
+        url: /booking/api-docs
+      - name: websocket-service
+        url: /websocket/api-docs
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,gateway
+  endpoint:
+    health:
+      show-details: always
+
+logging:
+  level:
+    org.springframework.cloud.gateway: INFO

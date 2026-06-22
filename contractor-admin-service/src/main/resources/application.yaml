@@ -1,0 +1,42 @@
+spring:
+  application:
+    name: contractor-admin-service
+
+  r2dbc:
+    url: r2dbc:postgresql://localhost:5437/contractordb
+    username: contractor
+    password: changeme
+
+  liquibase:
+    enabled: true
+    change-log: classpath:db/changelog/db.changelog-master.xml
+    url: jdbc:postgresql://localhost:5437/contractordb
+    user: contractor
+    password: changeme
+
+  kafka:
+    bootstrap-servers: localhost:29092
+
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          jwk-set-uri: http://localhost:8080/realms/charging-stations/protocol/openid-connect/certs
+
+
+logging:
+  level:
+    root: INFO
+    charg.ing.stations: INFO
+    org.apache.kafka: INFO
+    org.springframework.web: DEBUG
+    charg.ing.stations.service: DEBUG
+
+server:
+  port: 8004
+
+services:
+  station-controll:
+    url: http://localhost:8001
+  user-service:
+    url: http://localhost:8005
