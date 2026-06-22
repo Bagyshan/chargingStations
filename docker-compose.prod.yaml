@@ -11,6 +11,12 @@ x-logging: &default-logging
     max-size: "10m"
     max-file: "3"
 
+# Лимит JVM heap для каждого Java-сервиса. Без него JVM в контейнере без mem-limit
+# считает доступными 25% хоста (~1.9 ГБ на сервис) → 11 сервисов выедают всю RAM,
+# OOM-killer убивает контейнеры (exit 137) → рестарты → 502 на nginx.
+x-java-opts: &java-opts
+  JAVA_TOOL_OPTIONS: "-Xmx256m -XX:MaxMetaspaceSize=160m -XX:+UseSerialGC"
+
 services:
 
   # ============================ Базы данных ============================
@@ -315,6 +321,7 @@ services:
     restart: unless-stopped
     logging: *default-logging
     environment:
+      <<: *java-opts
       SPRING_PROFILES_ACTIVE: docker
       SPRING_DATASOURCE_URL: jdbc:postgresql://station-controller-db:5432/stationdb
       SPRING_DATASOURCE_USERNAME: station
@@ -344,6 +351,7 @@ services:
     restart: unless-stopped
     logging: *default-logging
     environment:
+      <<: *java-opts
       SPRING_PROFILES_ACTIVE: docker
       KAFKA_BOOTSTRAPSERVERS: kafka:9092
       STEVE_URL: http://app:8180/steve
@@ -371,6 +379,7 @@ services:
     restart: unless-stopped
     logging: *default-logging
     environment:
+      <<: *java-opts
       SPRING_PROFILES_ACTIVE: consul
       KAFKA_BROKERS: kafka:9092
       REDIS_HOST: redis
@@ -398,6 +407,7 @@ services:
     restart: unless-stopped
     logging: *default-logging
     environment:
+      <<: *java-opts
       KAFKA_BOOTSTRAP: kafka:9092
       REDIS_HOST: redis
       REDIS_PORT: "6379"
@@ -426,6 +436,7 @@ services:
     restart: unless-stopped
     logging: *default-logging
     environment:
+      <<: *java-opts
       SPRING_R2DBC_URL: r2dbc:postgresql://contractor-admin-service-db:5432/contractordb
       SPRING_R2DBC_USERNAME: contractor
       SPRING_R2DBC_PASSWORD: ${CONTRACTOR_DB_PASSWORD:-changeme}
@@ -455,6 +466,7 @@ services:
     restart: unless-stopped
     logging: *default-logging
     environment:
+      <<: *java-opts
       SPRING_PROFILES_ACTIVE: consul
       SPRING_DATASOURCE_URL: jdbc:postgresql://user-service-db:5432/userdb
       SPRING_DATASOURCE_USERNAME: user
@@ -495,6 +507,7 @@ services:
     restart: unless-stopped
     logging: *default-logging
     environment:
+      <<: *java-opts
       SPRING_KAFKA_BOOTSTRAPSERVERS: kafka:9092
       SPRING_MAIL_USERNAME: ${EMAIL_USERNAME:-flagman-inc@yandex.ru}
       SPRING_MAIL_PASSWORD: ${EMAIL_PASSWORD:-garzkehjpethfhye}
@@ -514,6 +527,7 @@ services:
     restart: unless-stopped
     logging: *default-logging
     environment:
+      <<: *java-opts
       R2DBC_URL: r2dbc:postgresql://payment-service-db:5432/paymentdb
       R2DBC_USERNAME: payment
       R2DBC_PASSWORD: ${PAYMENT_DB_PASSWORD:-changeme}
@@ -549,6 +563,7 @@ services:
     restart: unless-stopped
     logging: *default-logging
     environment:
+      <<: *java-opts
       SPRING_R2DBC_URL: r2dbc:postgresql://booking-service-db:5432/bookingdb
       SPRING_R2DBC_USERNAME: booking
       SPRING_R2DBC_PASSWORD: ${BOOKING_DB_PASSWORD:-changeme}
@@ -576,6 +591,7 @@ services:
     restart: unless-stopped
     logging: *default-logging
     environment:
+      <<: *java-opts
       STATION_INTEGRATION_URI: http://station-integration-service:8000
       STATION_CONTROLL_URI: http://station-controll-service:8001
       STATE_UPDATER_URI: http://state-updater-service:8002
