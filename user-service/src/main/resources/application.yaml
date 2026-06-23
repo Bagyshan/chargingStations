@@ -89,8 +89,8 @@ keycloak:
   credentials:
     secret: ${KEYCLOAK_CLIENT_SECRET:lk6oom9CCmAsItuL9P5uSKI7vd0HuIBa}
   admin:
-    username: flagman-inc@yandex.ru
-    password: changeme
+    username: ${KEYCLOAK_ADMIN_USERNAME:admin}
+    password: ${KEYCLOAK_ADMIN_PASSWORD:changeme}
     client-id: admin-cli
 
 app:
