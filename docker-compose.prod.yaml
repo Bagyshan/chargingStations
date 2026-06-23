@@ -514,7 +514,7 @@ services:
       SPRING_MAIL_HOST: ${EMAIL_HOST:-smtp.gmail.com}
       SPRING_MAIL_USERNAME: ${EMAIL_USERNAME:-bagishan01@gmail.com}
       SPRING_MAIL_PASSWORD: ${EMAIL_PASSWORD:-mviuxihupjsaaawq}
-      APP_BASEURL: http://${SERVER_HOST:-localhost}
+      APP_BASEURL: http://${SERVER_HOST:-localhost}/user
     networks: [charging-stations-network]
     depends_on:
       kafka:
