@@ -484,6 +484,8 @@ services:
       SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWKSETURI: http://keycloak:8080/realms/charging-stations/protocol/openid-connect/certs
       APP_BASEURL: http://${SERVER_HOST:-localhost}/user
       KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_CLIENT_SECRET:-lk6oom9CCmAsItuL9P5uSKI7vd0HuIBa}
+      KEYCLOAK_ADMIN_USERNAME: ${KEYCLOAK_ADMIN:-admin}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-changeme}
       EMAIL_USERNAME: ${EMAIL_USERNAME:-flagman-inc@yandex.ru}
       EMAIL_PASSWORD: ${EMAIL_PASSWORD:-garzkehjpethfhye}
     networks: [charging-stations-network]
