@@ -121,6 +121,7 @@ public class UserService {
                                 UserEvent event = UserEvent.builder()
                                         .eventType(UserEventType.USER_REGISTERED)
                                         .userId(savedUser.getId())
+                                        .keycloakId(savedUser.getKeycloakId())
                                         .userEmail(savedUser.getEmail())
                                         .userRole(savedUser.getRole().name())
                                         .timestamp(LocalDateTime.now())

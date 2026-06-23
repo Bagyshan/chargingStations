@@ -24,9 +24,11 @@ public class PaymentService {
     public Mono<UserBalance> getBalance(UUID userId) {
         return repository.findById(userId)
                 .switchIfEmpty(Mono.defer(() -> {
-                    // Auto-create record with zero balance
+                    // Auto-create record with zero balance.
+                    // entityTemplate.insert (а не repository.save): у сущности задан @Id,
+                    // поэтому R2DBC трактовал бы save() как UPDATE и падал бы на несуществующей строке.
                     UserBalance ub = new UserBalance(userId, BigDecimal.ZERO.setScale(2), false);
-                    return repository.save(ub);
+                    return entityTemplate.insert(ub);
                 }));
     }
 
@@ -46,7 +48,7 @@ public class PaymentService {
                 })
                 .switchIfEmpty(Mono.defer(() -> {
                     UserBalance ub = new UserBalance(userId, finalAmount, false);
-                    return repository.save(ub);
+                    return entityTemplate.insert(ub);
                 }));
     }
 

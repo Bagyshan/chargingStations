@@ -19,6 +19,7 @@ import java.util.Map;
 public class UserEvent {
     private UserEventType eventType;
     private Long userId;
+    private String keycloakId;
     private String userEmail;
     private String userRole;
 
