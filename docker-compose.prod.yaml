@@ -486,8 +486,8 @@ services:
       KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_CLIENT_SECRET:-lk6oom9CCmAsItuL9P5uSKI7vd0HuIBa}
       KEYCLOAK_ADMIN_USERNAME: ${KEYCLOAK_ADMIN:-admin}
       KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-changeme}
-      EMAIL_USERNAME: ${EMAIL_USERNAME:-flagman-inc@yandex.ru}
-      EMAIL_PASSWORD: ${EMAIL_PASSWORD:-garzkehjpethfhye}
+      EMAIL_USERNAME: ${EMAIL_USERNAME:-bagishan01@gmail.com}
+      EMAIL_PASSWORD: ${EMAIL_PASSWORD:-mviuxihupjsaaawq}
     networks: [charging-stations-network]
     depends_on:
       user-service-db:
@@ -511,8 +511,9 @@ services:
     environment:
       <<: *java-opts
       SPRING_KAFKA_BOOTSTRAPSERVERS: kafka:9092
-      SPRING_MAIL_USERNAME: ${EMAIL_USERNAME:-flagman-inc@yandex.ru}
-      SPRING_MAIL_PASSWORD: ${EMAIL_PASSWORD:-garzkehjpethfhye}
+      SPRING_MAIL_HOST: ${EMAIL_HOST:-smtp.gmail.com}
+      SPRING_MAIL_USERNAME: ${EMAIL_USERNAME:-bagishan01@gmail.com}
+      SPRING_MAIL_PASSWORD: ${EMAIL_PASSWORD:-mviuxihupjsaaawq}
       APP_BASEURL: http://${SERVER_HOST:-localhost}
     networks: [charging-stations-network]
     depends_on:

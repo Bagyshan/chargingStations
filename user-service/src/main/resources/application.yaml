@@ -58,10 +58,10 @@ spring:
         spring.json.trusted.packages: "*"
 
   mail:
-    host: smtp.yandex.ru
+    host: smtp.gmail.com
     port: 587
-    username: ${EMAIL_USERNAME:flagman-inc@yandex.ru}
-    password: ${EMAIL_PASSWORD:garzkehjpethfhye}
+    username: ${EMAIL_USERNAME:bagishan01@gmail.com}
+    password: ${EMAIL_PASSWORD:mviuxihupjsaaawq}
     properties:
       mail:
         smtp:
@@ -69,7 +69,7 @@ spring:
           starttls:
             enable: true
           ssl:
-            trust: smtp.yandex.ru
+            trust: smtp.gmail.com
 
   cloud:
     consul:
@@ -111,7 +111,7 @@ verification:
     expiration: 86400 # 24 часа
   email:
     enabled: true
-    from: ${EMAIL_USERNAME:flagman-inc@yandex.ru}
+    from: ${EMAIL_USERNAME:bagishan01@gmail.com}
 
 kafka:
   topics:

@@ -16,7 +16,7 @@ import org.springframework.util.StringUtils;
 @RequiredArgsConstructor
 public class EmailService {
 
-    @Value("${app.verification.email.from:flagman-inc@yandex.ru}")
+    @Value("${app.verification.email.from:bagishan01@gmail.com}")
     private String fromEmail;
 
     @Value("${app.base-url:http://localhost:8005}")

@@ -6,10 +6,10 @@ spring:
     name: notification-service
 
   mail:
-    host: smtp.yandex.ru
+    host: smtp.gmail.com
     port: 587
-    username: flagman-inc@yandex.ru
-    password: garzkehjpethfhye
+    username: ${EMAIL_USERNAME:bagishan01@gmail.com}
+    password: ${EMAIL_PASSWORD:mviuxihupjsaaawq}
     properties:
       mail:
         smtp:
@@ -17,6 +17,8 @@ spring:
           starttls:
             enable: true
             required: true
+          ssl:
+            trust: smtp.gmail.com
 
   kafka:
     bootstrap-servers: localhost:29092
@@ -41,7 +43,7 @@ app:
   base-url: http://localhost:8005  # базовый URL для ссылок подтверждения
   verification:
     email:
-      from: flagman-inc@yandex.ru
+      from: ${EMAIL_USERNAME:bagishan01@gmail.com}
 
 logging:
   level:

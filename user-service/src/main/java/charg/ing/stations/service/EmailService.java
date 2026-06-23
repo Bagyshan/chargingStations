@@ -15,10 +15,10 @@ import reactor.core.publisher.Mono;
 @RequiredArgsConstructor
 public class EmailService {
 
-    @Value("${spring.mail.username:flagman-inc@yandex.ru}")
+    @Value("${spring.mail.username:bagishan01@gmail.com}")
     private String fromEmail;
 
-    @Value("${verification.email.from:flagman-inc@yandex.ru}")
+    @Value("${verification.email.from:bagishan01@gmail.com}")
     private String verificationFromEmail;
 
     @Value("${app.base-url:http://localhost:8005}")

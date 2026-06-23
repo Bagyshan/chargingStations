@@ -1878,13 +1878,13 @@
     "auth": "true",
     "envelopeFrom": "",
     "ssl": "false",
-    "password": "garzkehjpethfhye",
+    "password": "mviuxihupjsaaawq",
     "port": "587",
-    "host": "smtp.yandex.ru",
+    "host": "smtp.gmail.com",
     "replyTo": "",
-    "from": "flagman-inc@yandex.ru",
+    "from": "bagishan01@gmail.com",
     "fromDisplayName": "Charging Stations",
-    "user": "flagman-inc@yandex.ru"
+    "user": "bagishan01@gmail.com"
   },
   "loginTheme": "keycloak",
   "accountTheme": "keycloak.v3",

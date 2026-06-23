@@ -80,6 +80,14 @@ curl http://<SERVER_HOST>/realms/charging-stations/.well-known/openid-configurat
     `redirectUris`/`webOrigins` клиента (сейчас там только `http://localhost:8005/*`).
   - ⚠️ Файл realm содержит секрет клиента, хэши паролей пользователей и SMTP — он в git намеренно
     (чтобы realm был одинаковым везде), но обращайся с ним как с чувствительным.
+  - ⚠️ **Админка Keycloak по IP без HTTPS → «HTTPS required» (400).** Realm `charging-stations` уже с
+    `sslRequired=none`, но realm `master` (сама админка `/admin/`) в импорт не входит и остаётся со
+    значением по умолчанию `external` (требует HTTPS вне localhost). После первого старта на новом
+    сервере выполнить один раз (значение пишется в БД, переживает рестарты):
+    ```bash
+    docker compose -f docker-compose.prod.yaml exec keycloak sh -c \
+    '/opt/keycloak/bin/kcadm.sh config credentials --server http://localhost:8080 --realm master --user "$KEYCLOAK_ADMIN" --password "$KEYCLOAK_ADMIN_PASSWORD" && /opt/keycloak/bin/kcadm.sh update realms/master -s sslRequired=NONE'
+    ```
 - **HTTPS / 443.** Сейчас только :80 (доступ по IP). Чтобы включить TLS:
   1. раскомментировать `443:443` и монтирование `./nginx/certs` в `docker-compose.prod.yaml`;
   2. положить `fullchain.pem` / `privkey.pem` в `./nginx/certs` (или выпустить через certbot);
