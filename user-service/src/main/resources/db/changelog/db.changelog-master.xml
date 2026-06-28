@@ -11,5 +11,6 @@
     <include file="changes/0001-create-users-table.sql" relativeToChangelogFile="true"/>
     <include file="changes/0002-create-verification-tokens.sql" relativeToChangelogFile="true"/>
     <include file="changes/0003-create-password-reset-tokens.sql" relativeToChangelogFile="true"/>
+    <include file="changes/0004-create-user-favorite-stations.sql" relativeToChangelogFile="true"/>
 
 </databaseChangeLog>

@@ -16,11 +16,17 @@ import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.function.Predicate;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @RestController
 @RequestMapping("/api/cached-stations")
@@ -46,17 +52,32 @@ public class StationController {
     public Mono<ResponseEntity<AllStationsResponse>> getAllStations(
             @RequestParam(required = false) Double longitude,
             @RequestParam(required = false) Double latitude,
-            @RequestParam(required = false, defaultValue = "false") boolean availableOnly) {
+            @RequestParam(required = false) Double radiusKm,
+            @RequestParam(required = false, defaultValue = "false") boolean availableOnly,
+            @RequestParam(required = false, defaultValue = "false") boolean freeConnectorsOnly,
+            @RequestParam(required = false) List<Integer> connectorTypeIds,
+            @RequestParam(required = false) Double minPower,
+            @RequestParam(required = false) Double maxPower,
+            @RequestParam(required = false) BigDecimal minKwCost,
+            @RequestParam(required = false) BigDecimal maxKwCost,
+            @RequestParam(required = false) BigDecimal minBookingMinuteCost,
+            @RequestParam(required = false) BigDecimal maxBookingMinuteCost) {
+
+        Predicate<StationStateDTO> filter = buildFilter(
+                availableOnly, freeConnectorsOnly, connectorTypeIds,
+                minPower, maxPower, minKwCost, maxKwCost,
+                minBookingMinuteCost, maxBookingMinuteCost);
 
         // Проверка на частичную передачу параметров
         if (longitude == null && latitude == null) {
-            // Режим без расстояния
-            log.info("Getting ALL stations from Redis Hash (without distance), availableOnly={}", availableOnly);
+            // Режим без расстояния. radiusKm без координат игнорируется (фильтровать не от чего).
+            log.info("Getting ALL stations from Redis Hash (without distance), availableOnly={}, freeConnectorsOnly={}, connectorTypeIds={}",
+                    availableOnly, freeConnectorsOnly, connectorTypeIds);
             return redisVersionedService.getAllStationsFromHash()
                     .flatMap(stations -> {
                         // Преобразуем Map<String, StationStateDTO> в List<StationStateWithDistance>
                         List<StationStateWithDistance> stationList = stations.values().stream()
-                                .filter(dto -> !availableOnly || isAvailable(dto))
+                                .filter(filter)
                                 .map(dto -> new StationStateWithDistance(dto, null)) // distance = null
                                 .toList();
                         return Mono.just(AllStationsResponse.of(stationList));
@@ -64,8 +85,9 @@ public class StationController {
                     .map(ResponseEntity::ok);
         } else if (longitude != null && latitude != null) {
             // Режим с расстоянием
-            log.info("Getting ALL stations with distance from point ({}, {}), availableOnly={}", longitude, latitude, availableOnly);
-            return getAllStationsWithDistance(longitude, latitude, availableOnly)
+            log.info("Getting ALL stations with distance from point ({}, {}), radiusKm={}, availableOnly={}, freeConnectorsOnly={}, connectorTypeIds={}",
+                    longitude, latitude, radiusKm, availableOnly, freeConnectorsOnly, connectorTypeIds);
+            return getAllStationsWithDistance(longitude, latitude, radiusKm, filter)
                     .map(ResponseEntity::ok);
         } else {
             // Передан только один параметр — ошибка. Возвращаем 400 Bad Request.
@@ -74,6 +96,73 @@ public class StationController {
             ));
         }
     }
+
+    /**
+     * Собирает предикат фильтрации станции по переданным query-параметрам.
+     * null/пустые параметры означают «фильтр не задан» (станция проходит).
+     *
+     * Семантика коннекторных фильтров: если заданы freeConnectorsOnly и/или connectorTypeIds,
+     * станция проходит только если у неё есть хотя бы один коннектор, удовлетворяющий ВСЕМ заданным
+     * коннекторным условиям одновременно (т.е. «свободный коннектор нужного типа»).
+     */
+    private Predicate<StationStateDTO> buildFilter(
+            boolean availableOnly, boolean freeConnectorsOnly, List<Integer> connectorTypeIds,
+            Double minPower, Double maxPower, BigDecimal minKwCost, BigDecimal maxKwCost,
+            BigDecimal minBookingMinuteCost, BigDecimal maxBookingMinuteCost) {
+
+        Set<Integer> typeIds = (connectorTypeIds == null || connectorTypeIds.isEmpty())
+                ? null : new HashSet<>(connectorTypeIds);
+
+        return dto -> {
+            if (availableOnly && !isAvailable(dto)) return false;
+
+            // power хранится строкой (например "60" или "60 kW") — извлекаем число (кВт).
+            Double power = parsePower(dto.getPower());
+            if (minPower != null && (power == null || power < minPower)) return false;
+            if (maxPower != null && (power == null || power > maxPower)) return false;
+
+            if (!inRange(dto.getKwCost(), minKwCost, maxKwCost)) return false;
+            if (!inRange(dto.getBookingMinuteCost(), minBookingMinuteCost, maxBookingMinuteCost)) return false;
+
+            // Коннекторные фильтры: хотя бы один коннектор удовлетворяет всем заданным условиям.
+            if (freeConnectorsOnly || typeIds != null) {
+                List<StationStateDTO.ConnectorState> connectors = dto.getConnectors();
+                if (connectors == null || connectors.isEmpty()) return false;
+                boolean anyMatch = connectors.stream().anyMatch(c -> {
+                    boolean typeOk = typeIds == null
+                            || (c.getConnectorType() != null && typeIds.contains(c.getConnectorType().getId()));
+                    boolean freeOk = !freeConnectorsOnly || "Available".equalsIgnoreCase(c.getStatus());
+                    return typeOk && freeOk;
+                });
+                if (!anyMatch) return false;
+            }
+
+            return true;
+        };
+    }
+
+    /** Проверка попадания значения в диапазон [min, max]; null-границы не ограничивают. */
+    private boolean inRange(BigDecimal value, BigDecimal min, BigDecimal max) {
+        if (min != null && (value == null || value.compareTo(min) < 0)) return false;
+        if (max != null && (value == null || value.compareTo(max) > 0)) return false;
+        return true;
+    }
+
+    /** Извлекает числовое значение мощности (кВт) из строки power. Возвращает null, если число не найдено. */
+    private static Double parsePower(String power) {
+        if (power == null) return null;
+        Matcher m = POWER_PATTERN.matcher(power);
+        if (m.find()) {
+            try {
+                return Double.parseDouble(m.group().replace(',', '.'));
+            } catch (NumberFormatException ignored) {
+                return null;
+            }
+        }
+        return null;
+    }
+
+    private static final Pattern POWER_PATTERN = Pattern.compile("[0-9]+(?:[.,][0-9]+)?");
 //    @GetMapping
 //    public Mono<ResponseEntity<Map<String, StationStateDTO>>> getAllStations(
 //            @RequestParam(required = false) Double longitude,
@@ -112,7 +201,8 @@ public class StationController {
         return online && inService;
     }
 
-    private Mono<AllStationsResponse> getAllStationsWithDistance(double longitude, double latitude, boolean availableOnly) {
+    private Mono<AllStationsResponse> getAllStationsWithDistance(double longitude, double latitude,
+                                                                Double radiusKm, Predicate<StationStateDTO> filter) {
         Mono<Map<String, StationStateDTO>> stationsMapMono = redisVersionedService.getAllStationsFromHash();
         Flux<GeoResult<RedisGeoCommands.GeoLocation<String>>> geoResultsFlux = geoDataService.findAllStationsWithDistance(longitude, latitude);
 
@@ -125,10 +215,15 @@ public class StationController {
                     for (GeoResult<RedisGeoCommands.GeoLocation<String>> geoResult : geoResults) {
                         String stationId = geoResult.getContent().getName();
                         double distance = geoResult.getDistance().getValue();
+                        // Геоиндекс отсортирован по возрастанию расстояния — после первой станции
+                        // за пределами радиуса можно прекратить обход.
+                        if (radiusKm != null && distance > radiusKm) {
+                            break;
+                        }
                         StationStateDTO stationData = stations.get(stationId);
                         if (stationData != null) {
-                            if (availableOnly && !isAvailable(stationData)) {
-                                continue; // фильтр: только доступные станции
+                            if (!filter.test(stationData)) {
+                                continue; // станция не прошла фильтры
                             }
                             resultMap.put(stationId, new StationStateWithDistance(stationData, distance));
                         } else {
@@ -185,6 +280,77 @@ public class StationController {
 //                })
 //                .defaultIfEmpty(ResponseEntity.ok(Map.of()));
 //    }
+
+    /**
+     * Обогатить переданный список станций данными из кэша (для экрана «Избранное» и т.п.).
+     * POST /api/cached-stations/by-ids?longitude=&latitude=
+     * Тело: ["CB-1", "CB-2", ...]
+     *
+     * Возвращает те же StationStateWithDistance, что и общий список: если переданы координаты —
+     * с расстоянием и сортировкой по близости; иначе — без расстояния, в порядке переданных ID.
+     * Несуществующие/отсутствующие в кэше ID просто пропускаются.
+     */
+    @PostMapping("/by-ids")
+    public Mono<ResponseEntity<AllStationsResponse>> getStationsByIds(
+            @RequestBody List<String> stationIds,
+            @RequestParam(required = false) Double longitude,
+            @RequestParam(required = false) Double latitude) {
+
+        if (stationIds == null || stationIds.isEmpty()) {
+            return Mono.just(ResponseEntity.ok(AllStationsResponse.of(List.<StationStateWithDistance>of())));
+        }
+        if ((longitude == null) != (latitude == null)) {
+            return Mono.just(ResponseEntity.badRequest().body(
+                    AllStationsResponse.of("Both longitude and latitude must be provided together")));
+        }
+
+        java.util.LinkedHashSet<String> requested = new java.util.LinkedHashSet<>(stationIds);
+        log.info("Enriching {} stations by ids (withDistance={})", requested.size(), longitude != null);
+
+        if (longitude == null) {
+            // Без расстояния — сохраняем порядок переданных ID.
+            return redisVersionedService.getAllStationsFromHash()
+                    .map(stations -> {
+                        List<StationStateWithDistance> result = new ArrayList<>();
+                        for (String id : requested) {
+                            StationStateDTO dto = stations.get(id);
+                            if (dto != null) {
+                                result.add(new StationStateWithDistance(dto, null));
+                            }
+                        }
+                        return ResponseEntity.ok(AllStationsResponse.of(result));
+                    });
+        }
+
+        // С расстоянием — переиспользуем гео-индекс (сортировка по близости), фильтруем по запрошенным ID.
+        Flux<GeoResult<RedisGeoCommands.GeoLocation<String>>> geoResultsFlux =
+                geoDataService.findAllStationsWithDistance(longitude, latitude);
+
+        return Mono.zip(geoResultsFlux.collectList(), redisVersionedService.getAllStationsFromHash())
+                .map(tuple -> {
+                    List<GeoResult<RedisGeoCommands.GeoLocation<String>>> geoResults = tuple.getT1();
+                    Map<String, StationStateDTO> stations = tuple.getT2();
+
+                    Map<String, StationStateWithDistance> resultMap = new LinkedHashMap<>();
+                    for (GeoResult<RedisGeoCommands.GeoLocation<String>> geoResult : geoResults) {
+                        String stationId = geoResult.getContent().getName();
+                        if (!requested.contains(stationId)) {
+                            continue;
+                        }
+                        StationStateDTO stationData = stations.get(stationId);
+                        if (stationData != null) {
+                            double distance = geoResult.getDistance().getValue();
+                            resultMap.put(stationId, new StationStateWithDistance(stationData, distance));
+                        }
+                    }
+                    return ResponseEntity.ok(AllStationsResponse.of(new ArrayList<>(resultMap.values())));
+                })
+                .onErrorResume(e -> {
+                    log.error("Error enriching stations by ids: {}", e.getMessage(), e);
+                    return Mono.just(ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                            .body(AllStationsResponse.of("Internal error")));
+                });
+    }
 
     /**
      * Получить все станции в виде списка (Flux)

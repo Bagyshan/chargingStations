@@ -55,6 +55,7 @@ public class SecurityConfig {
                         // Защищенные endpoints
                         .pathMatchers("/api/v1/auth/logout").authenticated()
                         .pathMatchers("/api/v1/users/profile").authenticated()
+                        .pathMatchers("/api/v1/favorites/**").authenticated()
                         .pathMatchers("/api/v1/users/all").hasAnyRole("ADMIN", "SPECIALIST", "CONTRACTOR")
                         .pathMatchers("/api/v1/users/**").hasAnyRole("USER", "CONTRACTOR", "SPECIALIST")
                         .pathMatchers("/api/v1/admin/**").hasRole("ADMIN")
