@@ -42,6 +42,30 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.error(ex.getMessage())));
     }
 
+    @ExceptionHandler(InvalidCredentialsException.class)
+    public Mono<ResponseEntity<ApiResponse<Void>>> handleInvalidCredentials(InvalidCredentialsException ex) {
+        log.warn("Invalid credentials: {}", ex.getMessage());
+        return Mono.just(ResponseEntity
+                .status(HttpStatus.UNAUTHORIZED)
+                .body(ApiResponse.error(ex.getMessage())));
+    }
+
+    @ExceptionHandler(EmailNotVerifiedException.class)
+    public Mono<ResponseEntity<ApiResponse<Void>>> handleEmailNotVerified(EmailNotVerifiedException ex) {
+        log.warn("Email not verified: {}", ex.getMessage());
+        return Mono.just(ResponseEntity
+                .status(HttpStatus.FORBIDDEN)
+                .body(ApiResponse.error(ex.getMessage())));
+    }
+
+    @ExceptionHandler(IdentityProviderException.class)
+    public Mono<ResponseEntity<ApiResponse<Void>>> handleIdentityProvider(IdentityProviderException ex) {
+        log.warn("Identity provider error ({}): {}", ex.getStatus(), ex.getMessage());
+        return Mono.just(ResponseEntity
+                .status(ex.getStatus())
+                .body(ApiResponse.error(ex.getMessage())));
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public Mono<ResponseEntity<ApiResponse<Map<String, String>>>> handleValidationExceptions(
             MethodArgumentNotValidException ex) {

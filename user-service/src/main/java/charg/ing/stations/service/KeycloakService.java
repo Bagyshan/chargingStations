@@ -1,5 +1,9 @@
 package charg.ing.stations.service;
 
+import charg.ing.stations.exception.IdentityProviderException;
+import charg.ing.stations.exception.UserAlreadyExistsException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -13,6 +17,7 @@ import org.keycloak.representations.idm.CredentialRepresentation;
 import org.keycloak.representations.idm.RoleRepresentation;
 import org.keycloak.representations.idm.UserRepresentation;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
 import jakarta.annotation.PostConstruct;
@@ -45,6 +50,7 @@ public class KeycloakService {
 
     private Keycloak keycloakAdmin;
     private RealmResource realmResource;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     @PreDestroy
     public void close() {
@@ -77,7 +83,7 @@ public class KeycloakService {
 
         if (!existingUsers.isEmpty()) {
             log.warn("User with email {} already exists in Keycloak", email);
-            throw new RuntimeException("User already exists in Keycloak");
+            throw new UserAlreadyExistsException("User with this email already exists");
         }
 
         // Создаем представление пользователя
@@ -102,9 +108,23 @@ public class KeycloakService {
         // Создаем пользователя
         Response response = realmResource.users().create(user);
 
-        if (response.getStatus() != 201) {
-            log.error("Failed to create user in Keycloak. Status: {}", response.getStatus());
-            throw new RuntimeException("Failed to create user in Keycloak");
+        int status = response.getStatus();
+        if (status != 201) {
+            String kcMessage = extractKeycloakError(response);
+            log.error("Failed to create user in Keycloak. Status: {}, message: {}", status, kcMessage);
+
+            if (status == 409) {
+                throw new UserAlreadyExistsException("User with this email already exists");
+            }
+            if (status == 400) {
+                // Чаще всего — нарушение политики паролей. Отдаём реальное сообщение Keycloak.
+                throw new IdentityProviderException(
+                        kcMessage != null ? kcMessage : "Invalid registration data",
+                        HttpStatus.BAD_REQUEST);
+            }
+            throw new IdentityProviderException(
+                    "Identity provider is unavailable. Please try again later.",
+                    HttpStatus.BAD_GATEWAY);
         }
 
         // Получаем ID созданного пользователя
@@ -193,6 +213,34 @@ public class KeycloakService {
                 .findByClientId(clientId)
                 .get(0)
                 .getId();
+    }
+
+    /**
+     * Достаёт человекочитаемое сообщение об ошибке из тела ответа Keycloak
+     * (поле {@code errorMessage} или {@code error}). Возвращает {@code null},
+     * если тело пустое/не разобралось.
+     */
+    private String extractKeycloakError(Response response) {
+        try {
+            if (!response.hasEntity()) {
+                return null;
+            }
+            String body = response.readEntity(String.class);
+            if (body == null || body.isBlank()) {
+                return null;
+            }
+            JsonNode node = objectMapper.readTree(body);
+            if (node.hasNonNull("errorMessage")) {
+                return node.get("errorMessage").asText();
+            }
+            if (node.hasNonNull("error")) {
+                return node.get("error").asText();
+            }
+            return body;
+        } catch (Exception e) {
+            log.debug("Could not parse Keycloak error body", e);
+            return null;
+        }
     }
 
     public Keycloak getUserKeycloakInstance(String username, String password) {

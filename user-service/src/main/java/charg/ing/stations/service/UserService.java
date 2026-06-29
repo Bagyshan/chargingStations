@@ -8,6 +8,9 @@ import charg.ing.stations.entity.VerificationToken;
 import charg.ing.stations.entity.enums.UserRole;
 import charg.ing.stations.event.UserEvent;
 import charg.ing.stations.event.enums.UserEventType;
+import charg.ing.stations.exception.EmailNotVerifiedException;
+import charg.ing.stations.exception.IdentityProviderException;
+import charg.ing.stations.exception.InvalidCredentialsException;
 import charg.ing.stations.exception.InvalidTokenException;
 import charg.ing.stations.exception.UserAlreadyExistsException;
 import charg.ing.stations.exception.UserNotFoundException;
@@ -97,8 +100,15 @@ public class UserService {
                 ))
                 .subscribeOn(Schedulers.boundedElastic())
                 .onErrorMap(e -> {
+                    // Пробрасываем уже осмысленные ошибки (политика паролей, дубликат,
+                    // недоступность провайдера) с их кодами — не маскируем под 500.
+                    if (e instanceof IdentityProviderException || e instanceof UserAlreadyExistsException) {
+                        return e;
+                    }
                     log.error("Failed to create user in Keycloak: {}", request.getEmail(), e);
-                    return new RuntimeException("Failed to create user in identity provider");
+                    return new IdentityProviderException(
+                            "Identity provider is unavailable. Please try again later.",
+                            org.springframework.http.HttpStatus.BAD_GATEWAY);
                 })
                 .flatMap(keycloakId -> {
                     User user = User.builder()
@@ -152,12 +162,14 @@ public class UserService {
         return userRepository.findActiveByEmail(email)
                 .switchIfEmpty(Mono.defer(() -> {
                     log.warn("Login failed: User not found or inactive - {}", email);
-                    return Mono.error(new UserNotFoundException("Invalid credentials"));
+                    // 401 (а не 404), чтобы не раскрывать наличие аккаунта.
+                    return Mono.error(new InvalidCredentialsException("Invalid email or password"));
                 }))
                 .flatMap(user -> {
                     if (!user.getEmailVerified()) {
                         log.warn("Login blocked for unverified email: {}", email);
-                        return Mono.error(new RuntimeException("Email not verified. Please check your inbox and confirm your email address."));
+                        return Mono.error(new EmailNotVerifiedException(
+                                "Email not verified. Please check your inbox and confirm your email address."));
                     }
 
                     return Mono.fromCallable(() -> {
@@ -183,7 +195,7 @@ public class UserService {
                                             .build();
                                     kafkaEventProducer.sendUserEvent(event).subscribe();
                                 });
-                                return Mono.error(new RuntimeException("Invalid credentials"));
+                                return Mono.error(new InvalidCredentialsException("Invalid email or password"));
                             })
                             .flatMap(tokenResponse -> {
                                 user.setLastLoginAt(LocalDateTime.now());
