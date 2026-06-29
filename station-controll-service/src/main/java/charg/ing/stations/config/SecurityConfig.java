@@ -33,6 +33,7 @@ public class SecurityConfig {
                         ).permitAll()
                         // Read-only station endpoints — public (state-updater, websocket-service)
                         .pathMatchers(HttpMethod.GET, "/api/stations/**").permitAll()
+                        .pathMatchers(HttpMethod.GET, "/api/connector-types").permitAll()
                         // PATCH on stations and connectors — restricted
                         .pathMatchers(HttpMethod.PATCH, "/api/stations/**", "/api/connectors/**")
                                 .hasAnyRole("ADMIN", "SPECIALIST", "CONTRACTOR")
