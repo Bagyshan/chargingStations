@@ -86,6 +86,7 @@ public class StationSyncConsumer {
         Mono<Void> box = chargeBoxRepository.findByChargeBoxId(chargeBoxId)
                 .flatMap(entity -> {
                     if (payload.containsKey("serviceStatus")) entity.setServiceStatus(str(payload.get("serviceStatus")));
+                    if (payload.get("ocppTag") != null) entity.setOcppTag(str(payload.get("ocppTag")));
                     if (payload.get("power") != null) entity.setPower(str(payload.get("power")));
                     if (payload.get("kwCost") != null) entity.setKwCost(decimal(payload.get("kwCost")));
                     if (payload.get("bookingMinuteCost") != null) entity.setBookingMinuteCost(decimal(payload.get("bookingMinuteCost")));

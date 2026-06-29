@@ -96,6 +96,7 @@ public class StationStateService {
             payload.put("stationId", station.getChargeBoxId());
             payload.put("lastUpdated", Instant.now().toString());
             payload.put("meterType", station.getMeterType());
+            payload.put("ocppTag", station.getOcppTag());
             payload.put("version", chargeBoxVersion);
             payload.put("source", "station-service");
             payload.put("power", station.getPower());

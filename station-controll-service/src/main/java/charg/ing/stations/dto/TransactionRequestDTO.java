@@ -14,5 +14,4 @@ import java.time.Instant;
 public class TransactionRequestDTO {
     private String chargeBoxId;
     private Integer connectorId;
-    private String ocppTag;
 }

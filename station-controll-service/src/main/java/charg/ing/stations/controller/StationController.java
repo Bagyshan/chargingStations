@@ -109,7 +109,6 @@ public class StationController {
         Map<String, Object> ocppRequest = new HashMap<>();
         ocppRequest.put("chargeBoxId", request.getChargeBoxId());
         ocppRequest.put("connectorId", request.getConnectorId());
-        ocppRequest.put("ocppTag", request.getOcppTag());
 
         // Блокирующие пред-проверки (JPA + balance .block()) НЕЛЬЗЯ выполнять на event-loop потоке
         // WebFlux — выносим их на boundedElastic, иначе reactor бросает "block() ... not supported".
@@ -120,6 +119,9 @@ public class StationController {
                         return Mono.just(precheck.error());
                     }
                     TransactionService.ChargingLimit limit = precheck.limit();
+
+                    // ocppTag клиент больше не передаёт — берём его из каталога станции.
+                    ocppRequest.put("ocppTag", precheck.ocppTag());
 
                     return ocppRequestReplyService.sendAndReceive(ocppRequest, 10, false)
                             .flatMap(responseMap -> {
@@ -167,16 +169,21 @@ public class StationController {
             return StartPrecheck.error(ResponseEntity.status(HttpStatus.PAYMENT_REQUIRED).build());
         }
 
-        return StartPrecheck.ok(limit);
+        // 3. ocppTag станции из каталога — подставляется в OCPP-запрос вместо поля из тела запроса.
+        String ocppTag = stationService.getOcppTag(request.getChargeBoxId());
+
+        return StartPrecheck.ok(limit, ocppTag);
     }
 
-    /** Результат пред-проверок: либо готовый error-ответ, либо рассчитанный лимит для старта. */
-    private record StartPrecheck(ResponseEntity<TransactionResponseDTO> error, TransactionService.ChargingLimit limit) {
+    /** Результат пред-проверок: либо готовый error-ответ, либо рассчитанный лимит и ocppTag для старта. */
+    private record StartPrecheck(ResponseEntity<TransactionResponseDTO> error,
+                                 TransactionService.ChargingLimit limit,
+                                 String ocppTag) {
         static StartPrecheck error(ResponseEntity<TransactionResponseDTO> error) {
-            return new StartPrecheck(error, null);
+            return new StartPrecheck(error, null, null);
         }
-        static StartPrecheck ok(TransactionService.ChargingLimit limit) {
-            return new StartPrecheck(null, limit);
+        static StartPrecheck ok(TransactionService.ChargingLimit limit, String ocppTag) {
+            return new StartPrecheck(null, limit, ocppTag);
         }
     }
 
@@ -188,34 +195,30 @@ public class StationController {
 
         String userId = jwt.getSubject();
 
-        // Для остановки обязательно нужен transactionId
-//        if (request.getTransactionId() == null) {
-//            return Mono.error(new IllegalArgumentException("transactionId is required for stop transaction"));
-//        }
-
-//        Map<String, Object> ocppRequest = Map.of(
-//                "chargeBoxId", request.getChargeBoxId(),
-//                "connectorId", request.getConnectorId(),
-//                "ocppTag", request.getOcppTag()
-//        );
-
         Map<String, Object> ocppRequest = new HashMap<>();
         ocppRequest.put("chargeBoxId", request.getChargeBoxId());
         ocppRequest.put("connectorId", request.getConnectorId());
-        ocppRequest.put("ocppTag", request.getOcppTag());
 
-        return ocppRequestReplyService.sendAndReceive(ocppRequest, 10, true)
-                .flatMap(responseMap -> {
-                    TransactionResponseDTO response = objectMapper.convertValue(responseMap, TransactionResponseDTO.class);
-                    if (response.getUserId() == null) {
-                        response.setUserId(userId);
-                    }
+        // ocppTag клиент больше не передаёт — резолвим его из каталога станции (блокирующий JPA-чтение
+        // выносим на boundedElastic, чтобы не блокировать event-loop WebFlux).
+        return Mono.fromCallable(() -> stationService.getOcppTag(request.getChargeBoxId()))
+                .subscribeOn(Schedulers.boundedElastic())
+                .flatMap(ocppTag -> {
+                    ocppRequest.put("ocppTag", ocppTag);
 
-                    org.springframework.kafka.support.Acknowledgment noopAck = () -> {};
+                    return ocppRequestReplyService.sendAndReceive(ocppRequest, 10, true)
+                            .flatMap(responseMap -> {
+                                TransactionResponseDTO response = objectMapper.convertValue(responseMap, TransactionResponseDTO.class);
+                                if (response.getUserId() == null) {
+                                    response.setUserId(userId);
+                                }
 
-                    transactionService.updateStopTransactionAndAck(response, noopAck);
+                                org.springframework.kafka.support.Acknowledgment noopAck = () -> {};
 
-                    return Mono.just(ResponseEntity.ok(response));
+                                transactionService.updateStopTransactionAndAck(response, noopAck);
+
+                                return Mono.just(ResponseEntity.ok(response));
+                            });
                 });
     }
 }

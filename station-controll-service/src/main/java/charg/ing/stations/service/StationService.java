@@ -41,6 +41,17 @@ public class StationService {
         return convertToDTO(station);
     }
 
+    /**
+     * Возвращает ocppTag, привязанный к станции в каталоге. Старт/стоп зарядки больше не
+     * принимают ocppTag от клиента — он подставляется в OCPP-запрос отсюда. Источник истины
+     * каталога (в т.ч. для ocppTag) — эта БД; правки приходят из contractor-admin через patch.
+     */
+    public String getOcppTag(String chargeBoxId) {
+        return stationRepository.findByChargeBoxId(chargeBoxId)
+                .map(ChargeBoxEntity::getOcppTag)
+                .orElseThrow(() -> new IllegalStateException("Station not found: " + chargeBoxId));
+    }
+
     public List<StationDTO> getStationsPaginated(int page, int size) {
         log.info("Fetching stations page: {}, size: {}", page, size);
         Pageable pageable = PageRequest.of(page, size);
