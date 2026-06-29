@@ -135,6 +135,7 @@ public class StationService {
         dto.setKwCost(station.getKwCost());
         dto.setBookingMinuteCost(station.getBookingMinuteCost());
         dto.setServiceStatus(station.getServiceStatus() != null ? station.getServiceStatus().name() : null);
+        dto.setOnline(station.getOnline());
 
         // Конвертируем коннекторы
         dto.setConnectors(station.getConnectors().stream()

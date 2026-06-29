@@ -41,21 +41,38 @@ public interface ChargeBoxRepository extends JpaRepository<ChargeBoxEntity, Long
     boolean existsByChargeBoxId(String chargeBoxId);
     ChargeBoxEntity findByChargeBoxId(String chargeBoxId);
 
+    /** Лёгкая проекция текущего online (без загрузки всей сущности с EAGER-связями). */
+    @Query("SELECT c.online FROM ChargeBoxEntity c WHERE c.chargeBoxId = :chargeBoxId")
+    Boolean findOnlineByChargeBoxId(@Param("chargeBoxId") String chargeBoxId);
+
+    /** Обновляет только метку последнего сигнала (без смены online и без бампа версии). */
     @Modifying
-    @Query("UPDATE ChargeBoxEntity c SET c.online = :online, c.lastSeenAt = :lastSeenAt " +
-            "WHERE c.chargeBoxId = :chargeBoxId")
-    int updateConnectivity(@Param("chargeBoxId") String chargeBoxId,
-                           @Param("online") boolean online,
-                           @Param("lastSeenAt") java.time.Instant lastSeenAt);
+    @Query("UPDATE ChargeBoxEntity c SET c.lastSeenAt = :lastSeenAt WHERE c.chargeBoxId = :chargeBoxId")
+    int touchLastSeen(@Param("chargeBoxId") String chargeBoxId,
+                      @Param("lastSeenAt") java.time.Instant lastSeenAt);
 
     /**
-     * Гасит online у станций, от которых давно не было сигнала. NULL last_seen_at НЕ трогаем —
-     * это «ещё не слышали» (после деплоя), а не «потеряли». Возвращает число помеченных offline.
+     * Смена online (переход) с бампом версии — чтобы снимок состояния прошёл version-gate в
+     * state-updater и обновил Redis-кэш. {@code clearAutomatically}/{@code flushAutomatically},
+     * чтобы последующее чтение версии в той же транзакции увидело свежее значение.
      */
-    @Modifying
-    @Query("UPDATE ChargeBoxEntity c SET c.online = false " +
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("UPDATE ChargeBoxEntity c SET c.online = :online, c.lastSeenAt = :lastSeenAt, " +
+            "c.version = c.version + 1 WHERE c.chargeBoxId = :chargeBoxId")
+    int updateConnectivityAndBumpVersion(@Param("chargeBoxId") String chargeBoxId,
+                                         @Param("online") boolean online,
+                                         @Param("lastSeenAt") java.time.Instant lastSeenAt);
+
+    /** ID станций, которые числятся online, но давно молчат (для offline-свипа). */
+    @Query("SELECT c.chargeBoxId FROM ChargeBoxEntity c " +
             "WHERE c.online = true AND c.lastSeenAt IS NOT NULL AND c.lastSeenAt < :threshold")
-    int markStaleOffline(@Param("threshold") java.time.Instant threshold);
+    List<String> findStaleOnlineChargeBoxIds(@Param("threshold") java.time.Instant threshold);
+
+    /** Гасит online конкретной станции с бампом версии (для снимка в Redis). */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("UPDATE ChargeBoxEntity c SET c.online = false, c.version = c.version + 1 " +
+            "WHERE c.chargeBoxId = :chargeBoxId")
+    int markOfflineAndBumpVersion(@Param("chargeBoxId") String chargeBoxId);
 
 
 //    // Использование нативных функций

@@ -1,5 +1,6 @@
 package charg.ing.stations.service;
 
+import charg.ing.stations.entity.ChargeBoxEntity;
 import charg.ing.stations.repository.ChargeBoxRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -10,6 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 
 /**
  * Offline-детект станций. Признак online ведётся по двум источникам:
@@ -34,6 +36,7 @@ import java.time.Instant;
 public class StationConnectivityService {
 
     private final ChargeBoxRepository chargeBoxRepository;
+    private final StationStateService stationStateService;
 
     /**
      * Окно тишины, после которого свип гасит online. Должно превышать интервал OCPP-heartbeat
@@ -46,13 +49,7 @@ public class StationConnectivityService {
     @Transactional
     public void recordConnectivity(String chargeBoxId, String eventType, Instant timestamp) {
         boolean online = !"DISCONNECTED".equalsIgnoreCase(eventType);
-        Instant seenAt = timestamp != null ? timestamp : Instant.now();
-        int updated = chargeBoxRepository.updateConnectivity(chargeBoxId, online, seenAt);
-        if (updated == 0) {
-            log.debug("Connectivity event for unknown chargeBox {} ({})", chargeBoxId, eventType);
-        } else {
-            log.info("Connectivity: {} -> {} ({})", chargeBoxId, online ? "ONLINE" : "OFFLINE", eventType);
-        }
+        applyOnline(chargeBoxId, online, timestamp, eventType);
     }
 
     /**
@@ -62,14 +59,34 @@ public class StationConnectivityService {
      */
     @Transactional
     public void markSeen(String chargeBoxId, Instant timestamp) {
+        applyOnline(chargeBoxId, true, timestamp, "ACTIVITY");
+    }
+
+    /**
+     * Применяет признак online. На ПЕРЕХОДЕ online (изменилось значение) — бампает версию и
+     * публикует снимок состояния, чтобы изменение само дошло до Redis-кэша (state-updater) без
+     * ручного reload. Если online не изменился — лишь освежает {@code lastSeenAt} (дёшево, без
+     * бампа версии и без снимка).
+     */
+    private void applyOnline(String chargeBoxId, boolean online, Instant timestamp, String reason) {
         if (chargeBoxId == null) {
             return;
         }
-        Instant seenAt = timestamp != null ? timestamp : Instant.now();
-        int updated = chargeBoxRepository.updateConnectivity(chargeBoxId, true, seenAt);
-        if (updated > 0) {
-            log.debug("Liveness: {} seen at {}", chargeBoxId, seenAt);
+        Boolean current = chargeBoxRepository.findOnlineByChargeBoxId(chargeBoxId);
+        if (current == null && !chargeBoxRepository.existsByChargeBoxId(chargeBoxId)) {
+            log.debug("Connectivity event for unknown chargeBox {} ({})", chargeBoxId, reason);
+            return;
         }
+        Instant seenAt = timestamp != null ? timestamp : Instant.now();
+
+        if (Boolean.valueOf(online).equals(current)) {
+            // Состояние не изменилось — только метка последнего сигнала.
+            chargeBoxRepository.touchLastSeen(chargeBoxId, seenAt);
+            return;
+        }
+
+        chargeBoxRepository.updateConnectivityAndBumpVersion(chargeBoxId, online, seenAt);
+        publishSnapshot(chargeBoxId, online ? "ONLINE" : "OFFLINE", reason);
     }
 
     /** Свип: гасит online у станций, от которых не было сигнала дольше порога. */
@@ -77,9 +94,24 @@ public class StationConnectivityService {
     @Transactional
     public void sweepOffline() {
         Instant threshold = Instant.now().minus(Duration.ofSeconds(offlineThresholdSeconds));
-        int marked = chargeBoxRepository.markStaleOffline(threshold);
-        if (marked > 0) {
-            log.warn("Offline sweep: marked {} station(s) offline (no signal since {})", marked, threshold);
+        List<String> stale = chargeBoxRepository.findStaleOnlineChargeBoxIds(threshold);
+        for (String chargeBoxId : stale) {
+            chargeBoxRepository.markOfflineAndBumpVersion(chargeBoxId);
+            publishSnapshot(chargeBoxId, "OFFLINE", "sweep");
         }
+        if (!stale.isEmpty()) {
+            log.warn("Offline sweep: marked {} station(s) offline (no signal since {})", stale.size(), threshold);
+        }
+    }
+
+    /** Публикует снимок состояния станции с её текущей (уже забампленной) версией. */
+    private void publishSnapshot(String chargeBoxId, String state, String reason) {
+        ChargeBoxEntity fresh = chargeBoxRepository.findByChargeBoxId(chargeBoxId);
+        if (fresh == null) {
+            return;
+        }
+        long version = fresh.getVersion() != null ? fresh.getVersion() : 0L;
+        stationStateService.publishStationSnapshot(chargeBoxId, version);
+        log.info("Connectivity: {} -> {} ({}) snapshot v{}", chargeBoxId, state, reason, version);
     }
 }

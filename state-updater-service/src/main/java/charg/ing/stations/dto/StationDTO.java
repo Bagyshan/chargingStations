@@ -20,6 +20,8 @@ public class StationDTO {
     private String power;
     private BigDecimal kwCost;
     private BigDecimal bookingMinuteCost;
+    private String serviceStatus;
+    private Boolean online;
     private GeoLocationDTO geolocation;
     private AddressDTO address;
     private List<ConnectorDTO> connectors;

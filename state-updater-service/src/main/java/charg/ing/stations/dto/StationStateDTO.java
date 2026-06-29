@@ -187,6 +187,8 @@ public class StationStateDTO {
         dto.setPower(stationDTO.getPower());
         dto.setKwCost(stationDTO.getKwCost());
         dto.setBookingMinuteCost(stationDTO.getBookingMinuteCost());
+        dto.setServiceStatus(stationDTO.getServiceStatus());
+        dto.setOnline(stationDTO.getOnline());
 
         if (stationDTO.getGeolocation() != null) {
             StationStateDTO.Geolocation geoLocationDTO = new StationStateDTO.Geolocation();
