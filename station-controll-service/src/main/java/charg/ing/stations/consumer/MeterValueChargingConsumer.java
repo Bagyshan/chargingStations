@@ -9,6 +9,7 @@ import charg.ing.stations.enums.TransactionStatus;
 import charg.ing.stations.producer.ChargingStatusProducer;
 import charg.ing.stations.repository.TransactionRepository;
 import charg.ing.stations.service.ChargingStopService;
+import charg.ing.stations.service.StationConnectivityService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -40,6 +41,7 @@ public class MeterValueChargingConsumer {
     private final TransactionRepository transactionRepository;
     private final ChargingStatusProducer chargingStatusProducer;
     private final ChargingStopService chargingStopService;
+    private final StationConnectivityService connectivityService;
 
     @KafkaListener(topics = "station.meter.values", groupId = "station-controller-service-group-meter")
     public void onMeterValue(Map<String, Object> value, Acknowledgment ack) {
@@ -48,6 +50,9 @@ public class MeterValueChargingConsumer {
             if (msg.getChargeBoxId() == null || msg.getConnectorId() == null) {
                 return;
             }
+
+            // Поток meter-значений идёт только при активной зарядке — станция гарантированно на связи.
+            connectivityService.markSeen(msg.getChargeBoxId(), Instant.now());
 
             Optional<TransactionEntity> active = transactionRepository
                     .findFirstByChargeBoxIdAndConnectorIdAndStatusOrderByIdDesc(

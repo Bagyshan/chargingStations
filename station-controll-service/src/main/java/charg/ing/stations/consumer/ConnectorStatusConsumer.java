@@ -14,6 +14,7 @@ import charg.ing.stations.repository.ConnectorRepository;
 import charg.ing.stations.repository.TransactionRepository;
 import charg.ing.stations.service.ChargingStopService;
 import charg.ing.stations.service.ConnectorService;
+import charg.ing.stations.service.StationConnectivityService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.annotation.KafkaListener;
@@ -49,6 +50,7 @@ public class ConnectorStatusConsumer {
     private final ChargingStopService chargingStopService;
     private final ChargingStatusProducer chargingStatusProducer;
     private final StationAlertProducer stationAlertProducer;
+    private final StationConnectivityService connectivityService;
 
     @KafkaListener(topics = "station.status", groupId = "station-controller-service-group-status")
     public void onConnectorStatus(Map<String, Object> message, Acknowledgment ack) {
@@ -65,6 +67,10 @@ public class ConnectorStatusConsumer {
             String errorCode = message.get("errorCode") != null ? message.get("errorCode").toString() : null;
 
             log.info("Connector status: {}:{} -> {}", chargeBoxId, connectorId, status);
+
+            // Любой StatusNotification — признак, что станция на связи (держит online актуальным
+            // даже при редком OCPP-heartbeat).
+            connectivityService.markSeen(chargeBoxId, Instant.now());
 
             // Старый статус (для детекта перехода) до обновления.
             String oldStatus = connectorRepository.findByChargeBoxIdAndConnectorId(chargeBoxId, connectorId)
