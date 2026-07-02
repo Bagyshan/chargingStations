@@ -11,6 +11,7 @@ import charg.ing.stations.event.enums.UserEventType;
 import charg.ing.stations.exception.EmailNotVerifiedException;
 import charg.ing.stations.exception.IdentityProviderException;
 import charg.ing.stations.exception.InvalidCredentialsException;
+import charg.ing.stations.exception.InvalidPasswordException;
 import charg.ing.stations.exception.InvalidTokenException;
 import charg.ing.stations.exception.UserAlreadyExistsException;
 import charg.ing.stations.exception.UserNotFoundException;
@@ -444,6 +445,48 @@ public class UserService {
                             });
                 })
                 .then();
+    }
+
+    /**
+     * Смена пароля авторизованным пользователем. Проверяет текущий пароль,
+     * пытаясь получить токен по нему через Keycloak; если верный — ставит новый.
+     * Неверный текущий пароль → {@link InvalidPasswordException} (400).
+     */
+    public Mono<Void> changePassword(String email, String currentPassword, String newPassword) {
+        return userRepository.findActiveByEmail(email)
+                .switchIfEmpty(Mono.error(new UserNotFoundException("User not found")))
+                .flatMap(user -> Mono.fromCallable(() -> {
+                                    // Проверяем текущий пароль — пробуем взять токен по нему.
+                                    Keycloak keycloak = keycloakService.getUserKeycloakInstance(email, currentPassword);
+                                    try {
+                                        keycloak.tokenManager().getAccessToken();
+                                    } finally {
+                                        keycloak.close();
+                                    }
+                                    return user;
+                                })
+                                .subscribeOn(Schedulers.boundedElastic())
+                                .onErrorResume(e -> {
+                                    log.warn("Change password: current password invalid for {}", email);
+                                    return Mono.error(new InvalidPasswordException("Current password is incorrect"));
+                                })
+                                .flatMap(verified -> {
+                                    try {
+                                        keycloakService.resetPassword(verified.getKeycloakId(), newPassword);
+                                    } catch (Exception e) {
+                                        log.error("Keycloak password change failed for user: {}", email, e);
+                                        return Mono.error(new RuntimeException("Failed to update password in Keycloak", e));
+                                    }
+                                    UserEvent event = UserEvent.builder()
+                                            .eventType(UserEventType.PASSWORD_RESET_COMPLETED)
+                                            .userId(verified.getId())
+                                            .userEmail(verified.getEmail())
+                                            .timestamp(LocalDateTime.now())
+                                            .build();
+                                    kafkaEventProducer.sendUserEvent(event).subscribe();
+                                    log.info("Password changed for user: {}", email);
+                                    return Mono.<Void>empty();
+                                }));
     }
 
     public Mono<User> getUserById(Long id) {

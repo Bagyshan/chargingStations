@@ -1,5 +1,6 @@
 package charg.ing.stations.controller;
 
+import charg.ing.stations.dto.request.ChangePasswordRequest;
 import charg.ing.stations.dto.request.UpdateUserRequest;
 import charg.ing.stations.dto.response.ApiResponse;
 import charg.ing.stations.dto.response.UserProfileResponse;
@@ -71,6 +72,22 @@ public class UserController {
                                 UserProfileResponse.fromUser(updatedUser))))
                 .doOnSuccess(response -> log.info("Profile updated for: {}", email))
                 .doOnError(error -> log.error("Failed to update profile for: {}", email, error));
+    }
+
+    @Operation(summary = "Сменить пароль (текущий + новый)")
+    @PostMapping("/password")
+    public Mono<ResponseEntity<ApiResponse<Object>>> changePassword(
+            @Valid @RequestBody ChangePasswordRequest request,
+            @AuthenticationPrincipal Jwt jwt) {
+
+        String email = jwt.getClaimAsString("email");
+        log.info("Password change request for user: {}", email);
+
+        return userService.changePassword(email, request.getCurrentPassword(), request.getNewPassword())
+                .thenReturn(ResponseEntity
+                        .ok(ApiResponse.success("Password changed successfully", null)))
+                .doOnSuccess(response -> log.info("Password changed for: {}", email))
+                .doOnError(error -> log.warn("Password change failed for {}: {}", email, error.getMessage()));
     }
 
     @Operation(summary = "Получить пользователя по ID (только для админов)")

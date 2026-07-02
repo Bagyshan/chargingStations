@@ -42,6 +42,14 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.error(ex.getMessage())));
     }
 
+    @ExceptionHandler(InvalidPasswordException.class)
+    public Mono<ResponseEntity<ApiResponse<Void>>> handleInvalidPassword(InvalidPasswordException ex) {
+        log.warn("Invalid password: {}", ex.getMessage());
+        return Mono.just(ResponseEntity
+                .status(HttpStatus.BAD_REQUEST)
+                .body(ApiResponse.error(ex.getMessage())));
+    }
+
     @ExceptionHandler(InvalidCredentialsException.class)
     public Mono<ResponseEntity<ApiResponse<Void>>> handleInvalidCredentials(InvalidCredentialsException ex) {
         log.warn("Invalid credentials: {}", ex.getMessage());
