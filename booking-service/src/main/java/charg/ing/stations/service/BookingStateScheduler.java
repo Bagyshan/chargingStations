@@ -1,7 +1,9 @@
 package charg.ing.stations.service;
 
 import charg.ing.stations.dto.event.BookingEvent;
+import charg.ing.stations.dto.event.BookingEventMessage;
 import charg.ing.stations.entity.BookingEntity;
+import charg.ing.stations.producer.BookingEventProducer;
 import charg.ing.stations.repository.BookingRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -22,6 +24,7 @@ public class BookingStateScheduler {
 
     private final BookingRepository bookingRepository;
     private final KafkaTemplate<String, Object> kafkaTemplate;
+    private final BookingEventProducer bookingEventProducer;
 
     @Scheduled(fixedDelay = 10000) // каждые 10 секунд
     public void processActiveBookings() {
@@ -34,8 +37,10 @@ public class BookingStateScheduler {
         Instant now = Instant.now();
         boolean completed = false;
 
-        // Проверка истечения времени
-        if (booking.getEndedAt() != null && now.isAfter(booking.getEndedAt())) {
+        // Проверка истечения времени: бронь исчерпана, когда прошло оплаченное окно.
+        // Ориентируемся на remainingBookingEndTime (endedAt для активной брони не заполняется).
+        Instant expiry = booking.getRemainingBookingEndTime();
+        if (expiry != null && now.isAfter(expiry)) {
             booking.setStatus("COMPLETED");
             booking.setEndedAt(now); // фактическое завершение
             completed = true;
@@ -83,12 +88,36 @@ public class BookingStateScheduler {
 
         Mono<Void> action;
         if (completed) {
+            // Итоговые суммы для истории и расчёта (как при ручном завершении).
+            int totalMinutes = (int) Math.max(minutesElapsed, 1);
+            BigDecimal totalSum = booking.getPricePerMinute().multiply(BigDecimal.valueOf(totalMinutes));
+            booking.setTotalMinutes(totalMinutes);
+            booking.setTotalSum(totalSum);
+
+            BookingEventMessage stopEvent = buildStopEvent(booking, totalMinutes, totalSum);
+
             action = bookingRepository.save(booking)
-                    .then(Mono.fromRunnable(() -> sendEvent(event)));
+                    .then(Mono.fromRunnable(() -> sendEvent(event)))
+                    // STOP_RESERVATION → payment-service списывает оплату за прошедшее время.
+                    .then(bookingEventProducer.sendBookingEvent(stopEvent));
         } else {
             action = Mono.fromRunnable(() -> sendEvent(event));
         }
         return action;
+    }
+
+    private BookingEventMessage buildStopEvent(BookingEntity booking, int totalMinutes, BigDecimal totalSum) {
+        return BookingEventMessage.builder()
+                .bookingId(booking.getBookingId())
+                .stationId(booking.getStationId())
+                .connectorId(booking.getConnectorId())
+                .userId(booking.getUserId())
+                .eventType(BookingEventMessage.EventType.STOP_RESERVATION)
+                .totalSum(totalSum)
+                .totalMinutes(totalMinutes)
+                .startedAt(booking.getStartedAt())
+                .endedAt(booking.getEndedAt())
+                .build();
     }
 
     private void sendEvent(BookingEvent event) {

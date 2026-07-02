@@ -5,12 +5,14 @@ import charg.ing.stations.dto.StartTransactionCreateEvent;
 import charg.ing.stations.dto.StopTransactionUpdateEvent;
 import charg.ing.stations.dto.TransactionHistoryDTO;
 import charg.ing.stations.dto.TransactionResponseDTO;
+import charg.ing.stations.dto.event.ChargingStatusEvent;
 import charg.ing.stations.dto.event.TransactionEventMessage;
 import charg.ing.stations.entity.ChargeBoxEntity;
 import charg.ing.stations.entity.ConnectorEntity;
 import charg.ing.stations.entity.TransactionEntity;
 import charg.ing.stations.enums.ConnectorStatus;
 import charg.ing.stations.enums.TransactionStatus;
+import charg.ing.stations.producer.ChargingStatusProducer;
 import charg.ing.stations.producer.TransactionEventProducer;
 import charg.ing.stations.repository.ChargeBoxRepository;
 import charg.ing.stations.repository.ConnectorRepository;
@@ -48,6 +50,7 @@ public class TransactionService implements EventService {
     private final ObjectMapper objectMapper;
     private final TransactionEventProducer transactionEventProducer;
     private final ChargingBalanceClient chargingBalanceClient;
+    private final ChargingStatusProducer chargingStatusProducer;
 
     private static final Duration BALANCE_TIMEOUT = Duration.ofSeconds(7);
 
@@ -57,7 +60,7 @@ public class TransactionService implements EventService {
             ConnectorRepository connectorRepository, ConnectorService connectorService,
             StationStateService stationStateService, ChargeBoxRepository chargeBoxRepository,
             ObjectMapper objectMapper, TransactionEventProducer transactionEventProducer,
-            ChargingBalanceClient chargingBalanceClient) {
+            ChargingBalanceClient chargingBalanceClient, ChargingStatusProducer chargingStatusProducer) {
         this.repository = transactionRepository;
         this.connectorRepository = connectorRepository;
         this.connectorService = connectorService;
@@ -66,6 +69,7 @@ public class TransactionService implements EventService {
         this.objectMapper = objectMapper;
         this.transactionEventProducer = transactionEventProducer;
         this.chargingBalanceClient = chargingBalanceClient;
+        this.chargingStatusProducer = chargingStatusProducer;
     }
 
     /** Resolved charging budget: price per kWh and the max kWh the wallet can fund (null = unlimited/free). */
@@ -290,17 +294,46 @@ public class TransactionService implements EventService {
                     .updatedAt(entity.getUpdatedAt())
                     .build();
 
+            // Терминальный статус зарядки инициатору по WebSocket (charging.user.status):
+            // без него мобильный экран активной зарядки не закроется при авто-стопе (баланс исчерпан,
+            // поломка коннектора) — meter-значения после STOP больше не идут, а последний статус был ACTIVE.
+            ChargingStatusEvent terminalStatus = buildTerminalStatus(entity);
+
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override
                 public void afterCommit() {
                     ack.acknowledge();
                     transactionEventProducer.publish(eventMessage);
+                    chargingStatusProducer.publish(terminalStatus);
                 }
             });
         } catch (Exception e) {
             ack.acknowledge();
             throw e;
         }
+    }
+
+    /** Итоговый статус завершённой транзакции для per-user WebSocket-канала зарядки. */
+    private ChargingStatusEvent buildTerminalStatus(TransactionEntity entity) {
+        BigDecimal energyKwh = null;
+        if (entity.getTransactionValue() != null) {
+            energyKwh = BigDecimal.valueOf(entity.getTransactionValue())
+                    .divide(BigDecimal.valueOf(1000), 3, RoundingMode.HALF_UP);
+        }
+        return ChargingStatusEvent.builder()
+                .userId(entity.getUserId())
+                .chargeBoxId(entity.getChargeBoxId())
+                .connectorId(entity.getConnectorId())
+                .transactionId(entity.getTransactionId())
+                .energyKwh(energyKwh)
+                .currentCost(entity.getTotalSum())
+                .kwCost(entity.getPricePerKwh())
+                .maxKwQuantity(entity.getMaxKwQuantity())
+                .startedAt(entity.getStartTimestamp())
+                .soc(null)
+                .status(entity.getStatus() != null ? entity.getStatus().name() : TransactionStatus.COMPLETED.name())
+                .timestamp(Instant.now())
+                .build();
     }
 
 
