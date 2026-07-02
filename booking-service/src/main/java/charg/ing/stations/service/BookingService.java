@@ -7,6 +7,7 @@ import charg.ing.stations.dto.kafka.PaymentResponse;
 import charg.ing.stations.dto.kafka.StationRequest;
 import charg.ing.stations.dto.kafka.StationResponse;
 import charg.ing.stations.dto.request.BookingRequest;
+import charg.ing.stations.dto.responses.BookingHistoryResponse;
 import charg.ing.stations.dto.responses.BookingResponse;
 import charg.ing.stations.entity.BookingEntity;
 import charg.ing.stations.repository.BookingRepository;
@@ -15,6 +16,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.math.BigDecimal;
@@ -35,6 +37,30 @@ public class BookingService {
     private final BookingRepository bookingRepository;
     private final KafkaTemplate<String, Object> kafkaTemplate;
     private final BookingEventProducer bookingEventProducer;
+
+    /**
+     * История бронирований пользователя (все статусы), новые — первыми.
+     */
+    public Flux<BookingHistoryResponse> getUserBookings(UUID userId) {
+        return bookingRepository.findByUserIdOrderByCreatedAtDesc(userId)
+                .map(this::toHistory);
+    }
+
+    private BookingHistoryResponse toHistory(BookingEntity b) {
+        return BookingHistoryResponse.builder()
+                .bookingId(b.getBookingId())
+                .stationId(b.getStationId())
+                .connectorId(b.getConnectorId())
+                .status(b.getStatus())
+                .pricePerMinute(b.getPricePerMinute())
+                .maxBookingMinutes(b.getMaxBookingMinutes())
+                .totalMinutes(b.getTotalMinutes())
+                .totalSum(b.getTotalSum())
+                .startedAt(b.getStartedAt())
+                .endedAt(b.getEndedAt())
+                .createdAt(b.getCreatedAt())
+                .build();
+    }
 
     public Mono<BookingResponse> createBooking(UUID userId, BookingRequest request) {
         UUID paymentRequestId = UUID.randomUUID();

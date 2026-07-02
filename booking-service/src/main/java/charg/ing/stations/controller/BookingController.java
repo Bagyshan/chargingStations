@@ -2,6 +2,7 @@ package charg.ing.stations.controller;
 
 import charg.ing.stations.dto.request.BookingRequest;
 import charg.ing.stations.dto.responses.BookingCompleteResponse;
+import charg.ing.stations.dto.responses.BookingHistoryResponse;
 import charg.ing.stations.dto.responses.BookingResponse;
 import charg.ing.stations.service.BookingCompletionService;
 import charg.ing.stations.service.BookingService;
@@ -13,6 +14,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.util.UUID;
@@ -26,6 +28,13 @@ public class BookingController {
 
     private final BookingService bookingService;
     private final BookingCompletionService bookingCompletionService;
+
+    @GetMapping
+    @Operation(summary = "История бронирований текущего пользователя")
+    public Flux<BookingHistoryResponse> getMyBookings(@AuthenticationPrincipal Jwt jwt) {
+        UUID userId = UUID.fromString(jwt.getSubject());
+        return bookingService.getUserBookings(userId);
+    }
 
     @PostMapping
     @Operation(summary = "Создать бронирование")

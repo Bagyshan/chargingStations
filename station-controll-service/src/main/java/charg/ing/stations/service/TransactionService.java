@@ -3,6 +3,7 @@ package charg.ing.stations.service;
 
 import charg.ing.stations.dto.StartTransactionCreateEvent;
 import charg.ing.stations.dto.StopTransactionUpdateEvent;
+import charg.ing.stations.dto.TransactionHistoryDTO;
 import charg.ing.stations.dto.TransactionResponseDTO;
 import charg.ing.stations.dto.event.TransactionEventMessage;
 import charg.ing.stations.entity.ChargeBoxEntity;
@@ -30,6 +31,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -68,6 +70,36 @@ public class TransactionService implements EventService {
 
     /** Resolved charging budget: price per kWh and the max kWh the wallet can fund (null = unlimited/free). */
     public record ChargingLimit(BigDecimal pricePerKwh, BigDecimal maxKwQuantity) {}
+
+    /**
+     * История зарядок пользователя (все статусы), новые — первыми.
+     * Плоский DTO — ленивые связи сущности не трогаем.
+     */
+    @Transactional(readOnly = true)
+    public List<TransactionHistoryDTO> getUserTransactions(String userId) {
+        return repository.findByUserIdOrderByIdDesc(userId).stream()
+                .map(this::toHistory)
+                .toList();
+    }
+
+    private TransactionHistoryDTO toHistory(TransactionEntity t) {
+        return TransactionHistoryDTO.builder()
+                .transactionId(t.getTransactionId())
+                .chargeBoxId(t.getChargeBoxId())
+                .connectorId(t.getConnectorId())
+                .status(t.getStatus())
+                .reason(t.getReason())
+                .startTimestamp(t.getStartTimestamp())
+                .stopTimestamp(t.getStopTimestamp())
+                .startValue(t.getStartValue())
+                .stopValue(t.getStopValue())
+                .transactionValue(t.getTransactionValue())
+                .totalSum(t.getTotalSum())
+                .pricePerKwh(t.getPricePerKwh())
+                .maxKwQuantity(t.getMaxKwQuantity())
+                .createdAt(t.getCreatedAt())
+                .build();
+    }
 
     /**
      * Computes the kWh budget for a session from the charge box tariff ({@code kw_cost}) and the user's

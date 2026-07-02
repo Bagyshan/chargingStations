@@ -15,4 +15,6 @@ public interface BookingRepository extends R2dbcRepository<BookingEntity, UUID> 
 
     Mono<BookingEntity> findFirstByUserIdAndStatusOrderByStartedAtDesc(UUID userId, String status);
 
+    Flux<BookingEntity> findByUserIdOrderByCreatedAtDesc(UUID userId);
+
 }

@@ -20,6 +20,7 @@ public interface TransactionRepository extends JpaRepository<TransactionEntity, 
             String chargeBoxId, Integer connectorId, TransactionStatus status);
     Optional<TransactionEntity> findFirstByUserIdAndStatusOrderByIdDesc(
             String userId, TransactionStatus status);
+    List<TransactionEntity> findByUserIdOrderByIdDesc(String userId);
     List<TransactionEntity> findByChargeBoxId(String chargeBoxId);
     List<TransactionEntity> findByChargeBoxIdAndConnectorId(String chargeBoxId, Integer connectorId);
     boolean existsByTransactionId(Integer transactionId);
