@@ -122,6 +122,11 @@ server:
   port: 8005
   forward-headers-strategy: framework
 
+# Общий секрет внутренних endpoint'ов (X-Internal-Token). Тот же секрет
+# задаётся notification-service; в проде переопределяется env INTERNAL_API_TOKEN.
+internal:
+  api-token: ${INTERNAL_API_TOKEN:charging-internal-2026}
+
 management:
   health:
     mail:

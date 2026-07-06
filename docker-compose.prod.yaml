@@ -244,7 +244,8 @@ services:
       kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic charging.payment.responses --partitions 16 --replication-factor 1 --config cleanup.policy=delete --config min.insync.replicas=1 --config retention.ms=86400000 --config retention.bytes=1073741824 --config max.message.bytes=1048576 &&
       kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic transaction.events --partitions 16 --replication-factor 1 --config cleanup.policy=delete --config min.insync.replicas=1 --config retention.ms=86400000 --config retention.bytes=1073741824 --config max.message.bytes=1048576 &&
       kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic charging.user.status --partitions 16 --replication-factor 1 --config cleanup.policy=delete --config min.insync.replicas=1 --config retention.ms=86400000 --config retention.bytes=1073741824 --config max.message.bytes=1048576 &&
-      kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic station.hourly.tariffs --partitions 1 --replication-factor 1 --config cleanup.policy=delete --config min.insync.replicas=1 --config retention.ms=86400000 --config retention.bytes=1073741824 --config max.message.bytes=1048576
+      kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic station.hourly.tariffs --partitions 1 --replication-factor 1 --config cleanup.policy=delete --config min.insync.replicas=1 --config retention.ms=86400000 --config retention.bytes=1073741824 --config max.message.bytes=1048576 &&
+      kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic payment.topup.events --partitions 4 --replication-factor 1 --config cleanup.policy=delete --config min.insync.replicas=1 --config retention.ms=86400000 --config retention.bytes=1073741824 --config max.message.bytes=1048576
       "
 
   consul-server:
@@ -488,6 +489,7 @@ services:
       KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-changeme}
       EMAIL_USERNAME: ${EMAIL_USERNAME:-bagishan01@gmail.com}
       EMAIL_PASSWORD: ${EMAIL_PASSWORD:-mviuxihupjsaaawq}
+      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:-charging-internal-2026}
     networks: [charging-stations-network]
     depends_on:
       user-service-db:
@@ -515,6 +517,12 @@ services:
       SPRING_MAIL_USERNAME: ${EMAIL_USERNAME:-bagishan01@gmail.com}
       SPRING_MAIL_PASSWORD: ${EMAIL_PASSWORD:-mviuxihupjsaaawq}
       APP_BASEURL: http://${SERVER_HOST:-localhost}/user
+      # FCM push: файл ключа монтируется томом ниже; без файла пуши выключены (WARN).
+      FCM_SERVICE_ACCOUNT_FILE: /etc/batenergy/firebase-service-account.json
+      USER_SERVICE_URL: http://user-service:8005
+      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:-charging-internal-2026}
+    volumes:
+      - ./secrets/firebase-service-account.json:/etc/batenergy/firebase-service-account.json:ro
     networks: [charging-stations-network]
     depends_on:
       kafka:

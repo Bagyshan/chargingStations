@@ -52,6 +52,10 @@ public class SecurityConfig {
                                 "/webjars/**",
                                 "/actuator/health").permitAll()
 
+                        // Внутренние endpoints (service-to-service): доступ по
+                        // заголовку X-Internal-Token, проверяется в контроллере.
+                        .pathMatchers("/api/v1/internal/**").permitAll()
+
                         // Защищенные endpoints
                         .pathMatchers("/api/v1/auth/logout").authenticated()
                         .pathMatchers("/api/v1/users/profile").authenticated()

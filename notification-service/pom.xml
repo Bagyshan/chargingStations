@@ -25,6 +25,12 @@
 
 
     <dependencies>
+        <!-- FCM push-уведомления (Firebase Admin SDK) -->
+        <dependency>
+            <groupId>com.google.firebase</groupId>
+            <artifactId>firebase-admin</artifactId>
+            <version>9.4.3</version>
+        </dependency>
         <dependency>
             <groupId>org.springframework.kafka</groupId>
             <artifactId>spring-kafka</artifactId>

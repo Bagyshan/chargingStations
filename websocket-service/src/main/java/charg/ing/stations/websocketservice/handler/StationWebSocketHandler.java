@@ -34,7 +34,9 @@ public class StationWebSocketHandler implements WebSocketHandler {
     private final JwtTokenValidator tokenValidator; // Добавлено
 
     private static final Duration PING_INTERVAL = Duration.ofSeconds(30);
-    private static final Duration CONNECTION_TIMEOUT = Duration.ofMinutes(5);
+    /** Клиент неактивен (нет PONG/сообщений) дольше этого — закрываем сессию. */
+    private static final Duration IDLE_TIMEOUT = Duration.ofMinutes(2);
+    private static final Duration IDLE_CHECK_INTERVAL = Duration.ofSeconds(30);
 
 
 
@@ -76,13 +78,21 @@ public class StationWebSocketHandler implements WebSocketHandler {
                     // 2. Отправка исходящих сообщений
                     Mono<Void> outboundHandler = handleOutboundMessages(clientId, session, isActive);
 
-                    // 3. Обработка таймаута
-                    Mono<Void> timeoutHandler = Mono.delay(CONNECTION_TIMEOUT)
+                    // 3. Idle-таймаут: живой клиент отвечает PONG на каждый PING
+                    // (~30 с), поэтому активная сессия живёт бесконечно; рвём
+                    // только тех, кто реально замолчал дольше IDLE_TIMEOUT.
+                    Mono<Void> timeoutHandler = Flux.interval(IDLE_CHECK_INTERVAL)
+                            .takeWhile(tick -> isActive.get())
+                            .filter(tick -> {
+                                Instant last = sessionManager.getLastActivity(clientId);
+                                return last == null ||
+                                        Duration.between(last, Instant.now()).compareTo(IDLE_TIMEOUT) > 0;
+                            })
+                            .next()
                             .doOnNext(tick -> {
-                                if (isActive.get()) {
-                                    log.warn("⏰ Connection timeout for client: {}", clientId);
-                                    isActive.set(false);
-                                }
+                                log.warn("⏰ Idle timeout for client: {} (no activity for {}s)",
+                                        clientId, IDLE_TIMEOUT.toSeconds());
+                                isActive.set(false);
                             })
                             .then();
 

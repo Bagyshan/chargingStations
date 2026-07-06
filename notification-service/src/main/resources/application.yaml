@@ -38,6 +38,18 @@ kafka:
   topics:
     notification-events: notification.events
 
+# FCM push-уведомления. Без файла ключа сервис работает (пуши выключены, WARN в логе).
+# Файл — service-account JSON из Firebase Console (Project settings → Service accounts).
+fcm:
+  service-account-file: ${FCM_SERVICE_ACCOUNT_FILE:/etc/batenergy/firebase-service-account.json}
+
+# Внутренний API user-service (FCM-токены устройств).
+services:
+  user:
+    base-url: ${USER_SERVICE_URL:http://localhost:8005}
+internal:
+  api-token: ${INTERNAL_API_TOKEN:charging-internal-2026}
+
 # Настройки приложения
 app:
   base-url: http://localhost:8005  # базовый URL для ссылок подтверждения

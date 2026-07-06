@@ -7,6 +7,7 @@ import charg.ing.stations.dto.dengi.DengiPayment;
 import charg.ing.stations.dto.dengi.PaymentCallback;
 import charg.ing.stations.dto.dengi.StatusPaymentResult;
 import charg.ing.stations.dto.kafka.BalanceUpdatedEvent;
+import charg.ing.stations.dto.kafka.TopUpCompletedEvent;
 import charg.ing.stations.entity.TopUp;
 import charg.ing.stations.entity.TopUpStatus;
 import charg.ing.stations.kafka.BalanceEventProducer;
@@ -186,9 +187,9 @@ public class TopUpService {
      * The status guard in the UPDATE makes concurrent webhook+poll safe.
      */
     public Mono<Void> finalizeApproved(String orderId, String transId) {
-        // Returns the credited user's id only when THIS call actually performed the credit
+        // Returns the credited user+amount only when THIS call actually performed the credit
         // (status guard => idempotent; empty when already finalized).
-        Mono<UUID> work = db.sql("UPDATE top_up SET status='APPROVED', trans_id=:t, paid_at=now(), " +
+        Mono<CreditResult> work = db.sql("UPDATE top_up SET status='APPROVED', trans_id=:t, paid_at=now(), " +
                         "updated_at=now() WHERE order_id=:o AND status='PENDING'")
                 .bind("o", orderId)
                 .bind("t", transId == null ? "" : transId)
@@ -200,30 +201,35 @@ public class TopUpService {
                     }
                     return creditWalletForOrder(orderId);
                 });
-        // Notify an active booking after the credit is committed (publish outside the tx).
+        // Notify after the credit is committed (publish outside the tx).
         return work.as(tx::transactional)
-                .flatMap(this::publishBalanceUpdateIfActive)
+                .flatMap(this::publishAfterCredit)
                 .then();
     }
 
-    private Mono<UUID> creditWalletForOrder(String orderId) {
+    private record CreditResult(UUID userId, BigDecimal amount) {}
+
+    private Mono<CreditResult> creditWalletForOrder(String orderId) {
         return db.sql("SELECT user_id, amount FROM top_up WHERE order_id=:o")
                 .bind("o", orderId)
-                .map((row, meta) -> new Object[]{
+                .map((row, meta) -> new CreditResult(
                         row.get("user_id", UUID.class),
-                        row.get("amount", BigDecimal.class)})
+                        row.get("amount", BigDecimal.class)))
                 .one()
-                .flatMap(arr -> creditWallet((UUID) arr[0], (BigDecimal) arr[1])
-                        .doOnSuccess(v -> log.info("Credited wallet {} by {} (order {})", arr[0], arr[1], orderId))
-                        .thenReturn((UUID) arr[0]));
+                .flatMap(credit -> creditWallet(credit.userId(), credit.amount())
+                        .doOnSuccess(v -> log.info("Credited wallet {} by {} (order {})",
+                                credit.userId(), credit.amount(), orderId))
+                        .thenReturn(credit));
     }
 
     /**
-     * If the just-credited user currently has an active booking OR an active charging session, emit a
-     * balance-update event to {@code payment.events} so booking-service / station-controll-service can
-     * extend the session under the new balance.
+     * After a successful credit: ALWAYS emit a top-up event to {@code payment.topup.events}
+     * (push «Кошелёк пополнен»); additionally, if the user has an active booking OR charging
+     * session, emit a balance-update to {@code payment.events} so booking-service /
+     * station-controll-service can extend the session under the new balance.
      */
-    private Mono<UUID> publishBalanceUpdateIfActive(UUID userId) {
+    private Mono<CreditResult> publishAfterCredit(CreditResult credit) {
+        UUID userId = credit.userId();
         return db.sql("SELECT balance, is_booking, is_charging FROM balance WHERE user_id=:u")
                 .bind("u", userId)
                 .map((row, meta) -> new Object[]{
@@ -235,6 +241,14 @@ public class TopUpService {
                     BigDecimal newBalance = (BigDecimal) arr[0];
                     boolean isBooking = Boolean.TRUE.equals(arr[1]);
                     boolean isCharging = Boolean.TRUE.equals(arr[2]);
+
+                    balanceEventProducer.publishTopUpCompleted(TopUpCompletedEvent.builder()
+                            .userId(userId)
+                            .amount(credit.amount())
+                            .newBalance(newBalance)
+                            .timestamp(Instant.now())
+                            .build());
+
                     if (isBooking || isCharging) {
                         balanceEventProducer.publishBalanceUpdated(BalanceUpdatedEvent.builder()
                                 .userId(userId)
@@ -245,7 +259,7 @@ public class TopUpService {
                         log.debug("User {} has no active booking/charging; balance-update event skipped", userId);
                     }
                 })
-                .thenReturn(userId);
+                .thenReturn(credit);
     }
 
     /** Upserts the wallet row and atomically increments the balance. */

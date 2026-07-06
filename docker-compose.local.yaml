@@ -310,7 +310,8 @@ services:
       kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic charging.payment.responses --partitions 16 --replication-factor 1 --config cleanup.policy=delete --config min.insync.replicas=1 --config retention.ms=86400000 --config retention.bytes=1073741824 --config max.message.bytes=1048576 &&
       kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic transaction.events --partitions 16 --replication-factor 1 --config cleanup.policy=delete --config min.insync.replicas=1 --config retention.ms=86400000 --config retention.bytes=1073741824 --config max.message.bytes=1048576 &&
       kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic charging.user.status --partitions 16 --replication-factor 1 --config cleanup.policy=delete --config min.insync.replicas=1 --config retention.ms=86400000 --config retention.bytes=1073741824 --config max.message.bytes=1048576 &&
-      kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic station.hourly.tariffs --partitions 1 --replication-factor 1 --config cleanup.policy=delete --config min.insync.replicas=1 --config retention.ms=86400000 --config retention.bytes=1073741824 --config max.message.bytes=1048576
+      kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic station.hourly.tariffs --partitions 1 --replication-factor 1 --config cleanup.policy=delete --config min.insync.replicas=1 --config retention.ms=86400000 --config retention.bytes=1073741824 --config max.message.bytes=1048576 &&
+      kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic payment.topup.events --partitions 4 --replication-factor 1 --config cleanup.policy=delete --config min.insync.replicas=1 --config retention.ms=86400000 --config retention.bytes=1073741824 --config max.message.bytes=1048576
       "
 
 
