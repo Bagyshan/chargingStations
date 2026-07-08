@@ -9,6 +9,10 @@ RUN java -Djarmode=layertools -jar application.jar extract --destination extract
 FROM eclipse-temurin:21.0.2_13-jdk-jammy
 
 RUN addgroup spring-boot-group && adduser --ingroup spring-boot-group spring-boot
+# Каталог для загружаемой статики (иконки коннекторов station-controll-service).
+# Создаём с правами spring-boot заранее, чтобы docker-том, смонтированный сюда,
+# унаследовал владельца и приложение (не-root) могло писать в него новые файлы.
+RUN mkdir -p /application/uploads && chown -R spring-boot:spring-boot-group /application
 USER spring-boot:spring-boot-group
 VOLUME /tmp
 WORKDIR /application

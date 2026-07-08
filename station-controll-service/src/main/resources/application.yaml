@@ -47,3 +47,8 @@ management:
 
 upload:
   path: ./station-controll-service/src/main/resources/static/uploads
+
+# QR-наклейки станций: payload, который сканирует мобильное приложение.
+# Итоговая строка: {base}?station={chargeBoxId}&connector={connectorId}
+qr:
+  payload-base: batenergy://charge

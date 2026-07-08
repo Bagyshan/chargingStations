@@ -333,7 +333,12 @@ services:
       SPRING_CLOUD_CONSUL_HOST: consul-server
       SPRING_CLOUD_CONSUL_CONFIG_ENABLED: "false"
       SPRING_CLOUD_CONSUL_DISCOVERY_PREFERIPADDRESS: "true"
+      # Куда класть/откуда отдавать загруженные иконки. Совпадает с точкой
+      # монтирования тома ниже, чтобы файлы переживали редеплой.
+      UPLOAD_PATH: /application/uploads
     networks: [charging-stations-network]
+    volumes:
+      - station-controll-uploads:/application/uploads
     depends_on:
       station-controller-db:
         condition: service_healthy
@@ -652,3 +657,6 @@ volumes:
   contractor-db-data:
   mariadb_data:
   redis-data:
+  # Загруженные иконки типов коннекторов и прочая станционная статика.
+  # Без тома файлы живут в эфемерной ФС контейнера и теряются при редеплое.
+  station-controll-uploads:
