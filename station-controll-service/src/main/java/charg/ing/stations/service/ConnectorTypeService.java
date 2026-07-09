@@ -5,6 +5,8 @@ import charg.ing.stations.dto.connector_type.ConnectorTypeRequest;
 import charg.ing.stations.dto.connector_type.ConnectorTypeResponse;
 import charg.ing.stations.entity.ConnectorTypeEntity;
 import charg.ing.stations.repository.ConnectorTypeRepository;
+import charg.ing.stations.util.ConnectorIconProvider;
+import charg.ing.stations.util.ConnectorTypeCodes;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.codec.multipart.FilePart;
 import org.springframework.stereotype.Service;
@@ -19,11 +21,14 @@ public class ConnectorTypeService {
 
     private final ConnectorTypeRepository connectorTypeRepository;
     private final IconStorageService iconStorageService;
+    private final ConnectorIconProvider connectorIconProvider;
 
     public ConnectorTypeService(ConnectorTypeRepository connectorTypeRepository,
-                                IconStorageService iconStorageService) {
+                                IconStorageService iconStorageService,
+                                ConnectorIconProvider connectorIconProvider) {
         this.connectorTypeRepository = connectorTypeRepository;
         this.iconStorageService = iconStorageService;
+        this.connectorIconProvider = connectorIconProvider;
     }
 
     public Flux<ConnectorTypeResponse> getAllConnectorTypes() {
@@ -123,9 +128,12 @@ public class ConnectorTypeService {
 //                .build();
 //    }
     private ConnectorTypeResponse toResponse(ConnectorTypeEntity entity) {
+        String code = ConnectorTypeCodes.fromName(entity.getConnectorTypeName());
         return ConnectorTypeResponse.builder()
                 .id(entity.getId())
                 .connectorTypeName(entity.getConnectorTypeName())
+                .code(code)
+                .iconSvg(connectorIconProvider.svgForCode(code))
                 .connectorTypeIcon(entity.getConnectorTypeIcon())
                 .connectorsCount(0)  // или уберите поле из DTO
                 .build();
