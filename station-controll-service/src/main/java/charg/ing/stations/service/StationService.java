@@ -7,6 +7,7 @@ import charg.ing.stations.dto.StationDTO;
 import charg.ing.stations.enums.ServiceStatus;
 import charg.ing.stations.repository.AddressRepository;
 import charg.ing.stations.repository.StationRepository;
+import charg.ing.stations.util.IconUrlResolver;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
@@ -26,6 +27,7 @@ public class StationService {
     private final StationRepository stationRepository;
     private final AddressRepository addressRepository;
     private final StationStateService stationStateService;
+    private final IconUrlResolver iconUrlResolver;
 
     public List<StationDTO> getAllStations() {
         log.info("Fetching all stations from database");
@@ -149,7 +151,7 @@ public class StationService {
                         connectorDTO.setConnectorType(new StationDTO.ConnectorTypeDTO(
                                 connector.getConnectorType().getId(),
                                 connector.getConnectorType().getConnectorTypeName(),
-                                connector.getConnectorType().getConnectorTypeIcon()
+                                iconUrlResolver.resolve(connector.getConnectorType().getConnectorTypeIcon())
                         ));
                     }
                     return connectorDTO;

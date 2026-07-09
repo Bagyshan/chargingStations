@@ -52,3 +52,10 @@ upload:
 # Итоговая строка: {base}?station={chargeBoxId}&connector={connectorId}
 qr:
   payload-base: batenergy://charge
+
+app:
+  # Публичный базовый URL (без завершающего /), из которого собираются
+  # абсолютные ссылки на статику — connectorTypeIcon → {base}/uploads/...
+  # В проде задаётся через APP_PUBLIC_BASE_URL=http://<server-host>.
+  # Пусто → отдаётся относительный путь /uploads/... (локальная разработка).
+  public-base-url: ${APP_PUBLIC_BASE_URL:}

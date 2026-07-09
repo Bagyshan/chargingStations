@@ -2,13 +2,13 @@ package charg.ing.stations.controller;
 
 import charg.ing.stations.dto.connector_type.ConnectorTypeResponse;
 import charg.ing.stations.service.ConnectorTypeService;
+import charg.ing.stations.util.IconUrlResolver;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.codec.multipart.FilePart;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
@@ -20,24 +20,24 @@ import java.util.Map;
 public class ConnectorTypeController {
 
     private final ConnectorTypeService connectorTypeService;
+    private final IconUrlResolver iconUrlResolver;
 
-    public ConnectorTypeController(ConnectorTypeService connectorTypeService) {
+    public ConnectorTypeController(ConnectorTypeService connectorTypeService,
+                                   IconUrlResolver iconUrlResolver) {
         this.connectorTypeService = connectorTypeService;
+        this.iconUrlResolver = iconUrlResolver;
     }
 
     @GetMapping
-    public Flux<ConnectorTypeResponse> getAll(ServerWebExchange exchange) {
-        String baseUrl = getBaseUrl(exchange);
+    public Flux<ConnectorTypeResponse> getAll() {
         return connectorTypeService.getAllConnectorTypes()
-                .map(response -> enrichWithBaseUrl(response, baseUrl));
+                .map(this::enrichIcon);
     }
 
     @GetMapping("/{id}")
-    public Mono<ResponseEntity<ConnectorTypeResponse>> getById(
-            @PathVariable Integer id, ServerWebExchange exchange) {
-        String baseUrl = getBaseUrl(exchange);
+    public Mono<ResponseEntity<ConnectorTypeResponse>> getById(@PathVariable Integer id) {
         return connectorTypeService.getConnectorTypeById(id)
-                .map(response -> enrichWithBaseUrl(response, baseUrl))
+                .map(this::enrichIcon)
                 .map(ResponseEntity::ok)
                 .onErrorResume(IllegalArgumentException.class, e ->
                         Mono.just(ResponseEntity.notFound().build()));
@@ -74,16 +74,13 @@ public class ConnectorTypeController {
                         Mono.just(ResponseEntity.badRequest().body(Map.of("error", e.getMessage()))));
     }
 
-    private String getBaseUrl(ServerWebExchange exchange) {
-        return exchange.getRequest().getURI().getScheme() + "://" +
-                exchange.getRequest().getURI().getHost() + ":" +
-                exchange.getRequest().getURI().getPort();
-    }
-
-    private ConnectorTypeResponse enrichWithBaseUrl(ConnectorTypeResponse response, String baseUrl) {
-        if (response.getConnectorTypeIcon() != null && !response.getConnectorTypeIcon().startsWith("http")) {
-            response.setConnectorTypeIcon(baseUrl + response.getConnectorTypeIcon());
-        }
+    /**
+     * Приводит иконку к публичному абсолютному URL (единый источник — конфиг
+     * {@code app.public-base-url}), а не к хосту входящего запроса, который через
+     * gateway/WebClient давал внутренний {@code station-controll-service:8001}.
+     */
+    private ConnectorTypeResponse enrichIcon(ConnectorTypeResponse response) {
+        response.setConnectorTypeIcon(iconUrlResolver.resolve(response.getConnectorTypeIcon()));
         return response;
     }
 }

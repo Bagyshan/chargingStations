@@ -336,6 +336,9 @@ services:
       # Куда класть/откуда отдавать загруженные иконки. Совпадает с точкой
       # монтирования тома ниже, чтобы файлы переживали редеплой.
       UPLOAD_PATH: /application/uploads
+      # Публичный хост для абсолютных ссылок на иконки (connectorTypeIcon).
+      # Берётся из того же SERVER_HOST, что и Keycloak issuer, — на проде это IP/домен.
+      APP_PUBLIC_BASE_URL: http://${SERVER_HOST:-localhost}
     networks: [charging-stations-network]
     volumes:
       - station-controll-uploads:/application/uploads

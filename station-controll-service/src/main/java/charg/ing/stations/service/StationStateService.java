@@ -8,6 +8,7 @@ import charg.ing.stations.entity.StationStateOutbox;
 import charg.ing.stations.repository.ChargeBoxRepository;
 import charg.ing.stations.repository.ConnectorRepository;
 import charg.ing.stations.repository.StationStateOutboxRepository;
+import charg.ing.stations.util.IconUrlResolver;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -32,6 +33,7 @@ public class StationStateService {
     private final ConnectorRepository connectorRepository;
     private final StationStateOutboxRepository outboxRepository;
     private final ObjectMapper objectMapper;
+    private final IconUrlResolver iconUrlResolver;
 
 //    @Transactional(isolation = Isolation.READ_COMMITTED, propagation = Propagation.REQUIRES_NEW)
     @Transactional(isolation = Isolation.READ_COMMITTED)
@@ -169,7 +171,7 @@ public class StationStateService {
         Map<String, Object> m = new HashMap<>();
         m.put("id", connectorType.getId());
         m.put("connectorTypeName", connectorType.getConnectorTypeName());
-        m.put("connectorTypeIcon", connectorType.getConnectorTypeIcon());
+        m.put("connectorTypeIcon", iconUrlResolver.resolve(connectorType.getConnectorTypeIcon()));
         return m;
     }
 }
