@@ -21,6 +21,10 @@ public class ConnectorTypeEntity {
     @Column(name = "connector_type_name", nullable = false)
     private String connectorTypeName;
 
+    /** Стабильный код типа (CCS2, TYPE2, …) — ключ к встроенной иконке у клиентов. */
+    @Column(name = "connector_type_code", length = 32)
+    private String connectorTypeCode;
+
     @Column(name = "connector_type_icon")
     private String connectorTypeIcon;
 

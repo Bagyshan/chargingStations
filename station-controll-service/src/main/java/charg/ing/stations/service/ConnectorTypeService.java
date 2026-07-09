@@ -53,6 +53,7 @@ public class ConnectorTypeService {
                     // Создаем сущность
                     ConnectorTypeEntity entity = new ConnectorTypeEntity();
                     entity.setConnectorTypeName(name);
+                    entity.setConnectorTypeCode(ConnectorTypeCodes.fromName(name));
                     return connectorTypeRepository.save(entity);
                 })
                 .subscribeOn(Schedulers.boundedElastic())
@@ -81,6 +82,7 @@ public class ConnectorTypeService {
                         throw new IllegalArgumentException("Connector type with name '" + name + "' already exists");
                     }
                     entity.setConnectorTypeName(name);
+                    entity.setConnectorTypeCode(ConnectorTypeCodes.fromName(name));
                     return entity;
                 })
                 .subscribeOn(Schedulers.boundedElastic())
@@ -128,7 +130,12 @@ public class ConnectorTypeService {
 //                .build();
 //    }
     private ConnectorTypeResponse toResponse(ConnectorTypeEntity entity) {
-        String code = ConnectorTypeCodes.fromName(entity.getConnectorTypeName());
+        // Приоритет — сохранённый в БД код; если его нет (старые записи) —
+        // выводим из имени тем же нормализатором.
+        String code = entity.getConnectorTypeCode();
+        if (code == null || code.isBlank()) {
+            code = ConnectorTypeCodes.fromName(entity.getConnectorTypeName());
+        }
         return ConnectorTypeResponse.builder()
                 .id(entity.getId())
                 .connectorTypeName(entity.getConnectorTypeName())
