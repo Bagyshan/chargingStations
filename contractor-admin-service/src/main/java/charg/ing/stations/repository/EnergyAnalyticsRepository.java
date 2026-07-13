@@ -137,7 +137,7 @@ public class EnergyAnalyticsRepository {
                         COALESCE(SUM(t.transaction_value), 0) / 1000.0                                                        AS total_energy_kwh,
                         COUNT(*)                                                                                               AS total_sessions,
                         COALESCE(AVG(EXTRACT(EPOCH FROM (t.stop_timestamp - t.start_timestamp)) / 60.0), 0)                   AS avg_duration_minutes,
-                        COALESCE(SUM(t.total_sum), 0)                                                                         AS total_revenue,
+                        COALESCE(SUM(COALESCE(NULLIF(t.total_sum, 0), (t.transaction_value / 1000.0) * COALESCE(t.price_per_kwh, cb.kw_cost, 0))), 0) AS total_revenue,
                         COUNT(DISTINCT t.charge_box_id)                                                                       AS unique_stations,
                         COUNT(DISTINCT t.user_id)                                                                             AS unique_users
                     FROM transaction t
@@ -153,7 +153,7 @@ public class EnergyAnalyticsRepository {
                         COALESCE(SUM(t.transaction_value), 0) / 1000.0                                                        AS energy_kwh,
                         COUNT(*)                                                                                               AS sessions,
                         COALESCE(AVG(EXTRACT(EPOCH FROM (t.stop_timestamp - t.start_timestamp)) / 60.0), 0)                   AS avg_duration_minutes,
-                        COALESCE(SUM(t.total_sum), 0)                                                                         AS total_revenue,
+                        COALESCE(SUM(COALESCE(NULLIF(t.total_sum, 0), (t.transaction_value / 1000.0) * COALESCE(t.price_per_kwh, cb.kw_cost, 0))), 0) AS total_revenue,
                         string_agg(CAST(t.transaction_id AS TEXT), ',' ORDER BY t.transaction_id)                             AS transaction_ids
                     FROM transaction t
                     LEFT JOIN charge_box cb ON t.charge_box_id = cb.charge_box_id

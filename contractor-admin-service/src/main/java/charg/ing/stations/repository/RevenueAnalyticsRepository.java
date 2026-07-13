@@ -98,7 +98,10 @@ public class RevenueAnalyticsRepository {
 
         conditions.add("t.start_timestamp >= :t_from");
         conditions.add("t.start_timestamp <= :t_to");
-        conditions.add("t.total_sum IS NOT NULL");
+        // Раньше требовалось t.total_sum IS NOT NULL — из-за этого несведённые оплаты
+        // (без расчёта через O!Dengi) выпадали, а доход был нулевым. Теперь берём сессии
+        // с валидной энергией, а доход при отсутствии total_sum оцениваем как энергия × тариф.
+        conditions.add("t.transaction_value IS NOT NULL");
         binders.add(s -> s.bind("t_from", filter.getFrom()));
         binders.add(s -> s.bind("t_to", filter.getTo()));
 
@@ -124,7 +127,7 @@ public class RevenueAnalyticsRepository {
                 SELECT
                     date_trunc('%s', t.start_timestamp) AT TIME ZONE 'UTC'  AS period,
                     %s                                                        AS group_key,
-                    COALESCE(t.total_sum, 0)                                  AS charging_revenue,
+                    COALESCE(NULLIF(t.total_sum, 0), (t.transaction_value / 1000.0) * COALESCE(t.price_per_kwh, cb.kw_cost, 0), 0) AS charging_revenue,
                     0::decimal                                                AS booking_revenue,
                     1                                                         AS charging_sessions,
                     0                                                         AS booking_count,
@@ -149,7 +152,8 @@ public class RevenueAnalyticsRepository {
 
         conditions.add("b.started_at >= :b_from");
         conditions.add("b.started_at <= :b_to");
-        conditions.add("b.total_sum IS NOT NULL");
+        // Доход брони при отсутствии total_sum оцениваем как минуты × тариф за минуту.
+        conditions.add("b.total_minutes IS NOT NULL");
         binders.add(s -> s.bind("b_from", filter.getFrom()));
         binders.add(s -> s.bind("b_to", filter.getTo()));
 
@@ -180,7 +184,7 @@ public class RevenueAnalyticsRepository {
                     date_trunc('%s', b.started_at) AT TIME ZONE 'UTC'        AS period,
                     %s                                                        AS group_key,
                     0::decimal                                                AS charging_revenue,
-                    COALESCE(b.total_sum, 0)                                  AS booking_revenue,
+                    COALESCE(NULLIF(b.total_sum, 0), b.total_minutes * b.price_per_minute, 0) AS booking_revenue,
                     0                                                         AS charging_sessions,
                     1                                                         AS booking_count,
                     b.station_id                                              AS station_id,
