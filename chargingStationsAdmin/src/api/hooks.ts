@@ -198,3 +198,26 @@ export function useSetUserActive() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['users'] }),
   });
 }
+
+export function useUserBalance(keycloakId?: string) {
+  const scope = useAuth((s) => s.scope)();
+  return useQuery({
+    queryKey: ['user-balance', keycloakId ?? '-'],
+    queryFn: () => api.getUserBalance(scope, keycloakId!),
+    enabled: !!keycloakId,
+    retry: false,
+  });
+}
+
+export function useTopUp() {
+  const scope = useAuth((s) => s.scope)();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ keycloakId, amount }: { keycloakId: string; amount: number }) =>
+      api.topUpUser(scope, keycloakId, amount),
+    onSuccess: (_d, v) => {
+      qc.invalidateQueries({ queryKey: ['user-balance', v.keycloakId] });
+      qc.invalidateQueries({ queryKey: ['users'] });
+    },
+  });
+}

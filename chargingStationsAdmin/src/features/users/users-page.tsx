@@ -15,6 +15,8 @@ import { RoleBadge } from '@/components/status';
 import { useChangeUserRole, useSetUserActive, useUsers } from '@/api/hooks';
 import { useAuth } from '@/store/auth';
 import { toast } from '@/store/toast';
+import { UserDetailDrawer } from './user-detail-drawer';
+import { downloadCsv } from '@/lib/csv';
 import { formatDate, formatSom } from '@/lib/format';
 import { ROLE_LABELS, type Role, type User } from '@/types/domain';
 
@@ -27,6 +29,22 @@ export function UsersPage() {
   const setActive = useSetUserActive();
   const [q, setQ] = useState('');
   const [roleFilter, setRoleFilter] = useState<Role | 'ALL'>('ALL');
+  const [selected, setSelected] = useState<User | null>(null);
+
+  const onExport = () =>
+    downloadCsv(
+      'batenergy-users.csv',
+      ['Имя', 'Email', 'Телефон', 'Роль', 'Активен', 'Email подтверждён', 'Регистрация'],
+      rows.map((u) => [
+        `${u.firstName ?? ''} ${u.lastName ?? ''}`.trim(),
+        u.email,
+        u.phone ?? '',
+        ROLE_LABELS[u.role],
+        u.active ? 'да' : 'нет',
+        u.emailVerified ? 'да' : 'нет',
+        formatDate(u.createdAt),
+      ]),
+    );
 
   const rows = useMemo(() => {
     let list = users.data ?? [];
@@ -83,6 +101,7 @@ export function UsersPage() {
       key: 'role',
       header: 'Роль',
       render: (u) => (
+        <div onClick={(e) => e.stopPropagation()}>
         <Dropdown
           trigger={
             <button className="inline-flex items-center gap-1">
@@ -116,6 +135,7 @@ export function UsersPage() {
             </>
           )}
         </Dropdown>
+        </div>
       ),
     },
     {
@@ -140,7 +160,7 @@ export function UsersPage() {
         </div>
       ),
     },
-    { key: 'balance', header: 'Баланс', render: (u) => <span className="font-medium">{formatSom(u.balance ?? 0)}</span> },
+    { key: 'balance', header: 'Баланс', render: (u) => <span className="font-medium">{u.balance != null ? formatSom(u.balance) : '—'}</span> },
     { key: 'created', header: 'Регистрация', render: (u) => <span className="text-sm text-muted-foreground">{formatDate(u.createdAt)}</span> },
     {
       key: 'active',
@@ -148,7 +168,7 @@ export function UsersPage() {
       headClassName: 'text-right',
       className: 'text-right',
       render: (u) => (
-        <div className="flex justify-end">
+        <div className="flex justify-end" onClick={(e) => e.stopPropagation()}>
           <Switch
             checked={u.active}
             onChange={(v) =>
@@ -191,17 +211,20 @@ export function UsersPage() {
               </option>
             ))}
           </Select>
-          <Button variant="outline">Экспорт</Button>
+          <Button variant="outline" onClick={onExport}>Экспорт</Button>
         </div>
         <DataTable
           columns={columns}
           rows={rows}
           loading={users.isLoading}
           rowKey={(u) => u.id}
+          onRowClick={(u) => setSelected(u)}
           empty={<EmptyState icon={Users} title="Пользователи не найдены" />}
         />
         <div className="border-t border-border px-4 py-3 text-xs text-muted-foreground">Показано {rows.length} из {total}</div>
       </Card>
+
+      <UserDetailDrawer user={selected} onClose={() => setSelected(null)} />
     </div>
   );
 }

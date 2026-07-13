@@ -7,7 +7,7 @@ import { SERVICE } from './config';
 import { ApiError, request } from './http';
 import { pickRole, rolesOf, subOf } from './jwt';
 import { tokenStore } from './token-store';
-import type { Account, AnalyticsOptions, AuthProvider, DataApi, Owner } from '@/types/api';
+import type { Account, AnalyticsOptions, AuthProvider, DataApi, Owner, UserBalance } from '@/types/api';
 import type {
   Address,
   Booking,
@@ -106,6 +106,7 @@ interface RawTransaction {
 
 interface RawUser {
   id: number;
+  keycloakId?: string;
   email: string;
   phone?: string;
   firstName?: string;
@@ -369,6 +370,24 @@ export const backendApi: DataApi = {
     return mapUser(raw);
   },
 
+  async getUserBalance(_scope, keycloakId): Promise<UserBalance | null> {
+    try {
+      const b = await request<RawBalance>(`${SERVICE.payment}/api/v1/balance/${keycloakId}`);
+      return mapBalance(b);
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 404) return null;
+      throw e;
+    }
+  },
+
+  async topUpUser(_scope, keycloakId, amount): Promise<UserBalance> {
+    const b = await request<RawBalance>(
+      `${SERVICE.payment}/api/v1/admin/balance/${keycloakId}/top-up`,
+      { method: 'POST', body: { amount } },
+    );
+    return mapBalance(b);
+  },
+
   async getEnergyAnalytics(_scope, opts): Promise<EnergyResponse> {
     return request<EnergyResponse>(`${CA}/api/analytics/energy?${qs(opts)}`);
   },
@@ -405,6 +424,7 @@ interface RawRevenue extends Omit<RevenueResponse, 'summary'> {
 function mapUser(u: RawUser): User {
   return {
     id: u.id,
+    keycloakId: u.keycloakId,
     email: u.email,
     phone: u.phone ?? null,
     firstName: u.firstName ?? null,
@@ -416,6 +436,18 @@ function mapUser(u: RawUser): User {
     createdAt: u.createdAt ?? new Date().toISOString(),
     lastLoginAt: u.lastLoginAt ?? null,
   };
+}
+
+// BalanceDto сериализует флаг брони как isBooking (Lombok-геттер) — читаем оба варианта.
+interface RawBalance {
+  userId: string;
+  balance: number;
+  booking?: boolean;
+  isBooking?: boolean;
+}
+
+function mapBalance(b: RawBalance): UserBalance {
+  return { userId: b.userId, balance: b.balance ?? 0, booking: !!(b.booking ?? b.isBooking) };
 }
 
 async function connectorTypeMap(): Promise<Map<number, RawConnectorType>> {

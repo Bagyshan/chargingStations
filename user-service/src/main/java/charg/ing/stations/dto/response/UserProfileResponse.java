@@ -14,6 +14,8 @@ import java.time.LocalDateTime;
 @AllArgsConstructor
 public class UserProfileResponse {
     private Long id;
+    /** Keycloak UUID — ключ кошелька в payment-service (нужен админке для баланса). */
+    private String keycloakId;
     private String email;
     private String phone;
     private String firstName;
@@ -28,6 +30,7 @@ public class UserProfileResponse {
     public static UserProfileResponse fromUser(User user) {
         return UserProfileResponse.builder()
                 .id(user.getId())
+                .keycloakId(user.getKeycloakId())
                 .email(user.getEmail())
                 .phone(user.getPhone())
                 .firstName(user.getFirstName())

@@ -38,6 +38,13 @@ export interface Owner {
   name: string;
 }
 
+/** Кошелёк пользователя (payment-service BalanceDto). */
+export interface UserBalance {
+  userId: string;
+  balance: number;
+  booking: boolean;
+}
+
 /** Нормализованный аккаунт: единый вид для мок- и реального входа. */
 export interface Account {
   role: Role;
@@ -68,6 +75,8 @@ export interface DataApi {
   getUsers(scope: AuthScope): Promise<User[]>;
   changeUserRole(scope: AuthScope, id: number, role: Role): Promise<User>;
   setUserActive(scope: AuthScope, id: number, active: boolean): Promise<User>;
+  getUserBalance(scope: AuthScope, keycloakId: string): Promise<UserBalance | null>;
+  topUpUser(scope: AuthScope, keycloakId: string, amount: number): Promise<UserBalance>;
   getEnergyAnalytics(scope: AuthScope, opts: AnalyticsOptions): Promise<EnergyResponse>;
   getRevenueAnalytics(scope: AuthScope, opts: AnalyticsOptions): Promise<RevenueResponse>;
   getBookingAnalytics(scope: AuthScope, opts: AnalyticsOptions): Promise<BookingAnalyticsResponse>;

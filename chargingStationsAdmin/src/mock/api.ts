@@ -20,7 +20,7 @@ import type {
   Role,
   User,
 } from '@/types/domain';
-import type { AnalyticsOptions, AuthScope } from '@/types/api';
+import type { AnalyticsOptions, AuthScope, UserBalance } from '@/types/api';
 import {
   addresses,
   bookings,
@@ -258,6 +258,21 @@ export const mockApi = {
     if (!u) throw new Error('Пользователь не найден');
     u.active = active;
     return u;
+  },
+
+  async getUserBalance(_scope: AuthScope, keycloakId: string): Promise<UserBalance | null> {
+    await latency();
+    const u = users.find((x) => x.keycloakId === keycloakId);
+    if (!u) return null;
+    return { userId: keycloakId, balance: u.balance ?? 0, booking: false };
+  },
+
+  async topUpUser(_scope: AuthScope, keycloakId: string, amount: number): Promise<UserBalance> {
+    await latency();
+    const u = users.find((x) => x.keycloakId === keycloakId);
+    if (!u) throw new Error('Пользователь не найден');
+    u.balance = (u.balance ?? 0) + amount;
+    return { userId: keycloakId, balance: u.balance, booking: false };
   },
 
   /* ---------------------------- Аналитика ---------------------------- */
