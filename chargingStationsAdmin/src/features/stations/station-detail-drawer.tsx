@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { BatteryCharging, MapPin, Pencil, Plus, Trash2 } from 'lucide-react';
+import { BatteryCharging, MapPin, Pencil, Plus, QrCode, Trash2 } from 'lucide-react';
 import { Drawer } from '@/components/ui/drawer';
 import { Button } from '@/components/ui/button';
 import { Segmented } from '@/components/ui/segmented';
@@ -8,6 +8,7 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { ConnectorChip } from '@/components/connector-chip';
 import { ConnectorStatusBadge, OnlineDot } from '@/components/status';
 import { ConnectorForm } from '@/features/connectors/connector-form';
+import { QrStickersDialog } from './qr-stickers-dialog';
 import { useConnectors, useDeleteConnector, useSetServiceStatus, useTransactions } from '@/api/hooks';
 import { USE_MOCK } from '@/api/client';
 import { toast } from '@/store/toast';
@@ -53,6 +54,7 @@ function Content({
 
   const [connectorForm, setConnectorForm] = useState<{ open: boolean; connector?: Connector }>({ open: false });
   const [toDelete, setToDelete] = useState<Connector | null>(null);
+  const [qrOpen, setQrOpen] = useState(false);
 
   const recent = (transactions.data ?? []).filter((t) => t.chargeBoxId === station.chargeBoxId).slice(0, 5);
 
@@ -116,12 +118,18 @@ function Content({
       <section>
         <div className="mb-2 flex items-center justify-between">
           <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Коннекторы</h3>
-          {USE_MOCK && (
-            <Button variant="outline" size="sm" onClick={() => setConnectorForm({ open: true })}>
-              <Plus className="size-4" />
-              Добавить
+          <div className="flex gap-1.5">
+            <Button variant="outline" size="sm" onClick={() => setQrOpen(true)}>
+              <QrCode className="size-4" />
+              QR
             </Button>
-          )}
+            {USE_MOCK && (
+              <Button variant="outline" size="sm" onClick={() => setConnectorForm({ open: true })}>
+                <Plus className="size-4" />
+                Добавить
+              </Button>
+            )}
+          </div>
         </div>
         <div className="space-y-2">
           {connectors.isLoading ? (
@@ -194,6 +202,13 @@ function Content({
         connector={connectorForm.connector}
         defaultChargeBoxId={station.chargeBoxId}
         onClose={() => setConnectorForm({ open: false })}
+      />
+
+      <QrStickersDialog
+        open={qrOpen}
+        onClose={() => setQrOpen(false)}
+        station={station}
+        connectors={connectors.data ?? []}
       />
 
       <ConfirmDialog

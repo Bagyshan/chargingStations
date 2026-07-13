@@ -19,6 +19,7 @@ import type {
   ConnectorStatus,
   ConnectorType,
   EnergyResponse,
+  HourTariff,
   RevenueResponse,
   Role,
   ServiceStatus,
@@ -423,6 +424,24 @@ export const backendApi: DataApi = {
       { method: 'POST', body: { amount } },
     );
     return mapBalance(b);
+  },
+
+  async getHourlyTariffs(_scope, stationId): Promise<HourTariff[]> {
+    const raw = await request<{ hour: number; kwCost: number; bookingMinuteCost: number }[]>(
+      `${CA}/api/stations/${stationId}/hourly-tariffs`,
+    );
+    return raw.map((t) => ({
+      hour: t.hour,
+      kwCost: t.kwCost ?? 0,
+      bookingMinuteCost: t.bookingMinuteCost ?? 0,
+    }));
+  },
+
+  async saveHourlyTariffs(_scope, stationId, tariffs): Promise<void> {
+    await request<void>(`${CA}/api/stations/${stationId}/hourly-tariffs`, {
+      method: 'PUT',
+      body: { tariffs },
+    });
   },
 
   async getEnergyAnalytics(_scope, opts): Promise<EnergyResponse> {

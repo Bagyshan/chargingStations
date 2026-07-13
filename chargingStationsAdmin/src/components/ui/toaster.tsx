@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom';
 import { AlertCircle, CheckCircle2, Info, X } from 'lucide-react';
 import { useToasts, type ToastKind } from '@/store/toast';
 import { cn } from '@/lib/utils';
@@ -18,7 +19,7 @@ export function Toaster() {
   const toasts = useToasts((s) => s.toasts);
   const dismiss = useToasts((s) => s.dismiss);
 
-  return (
+  return createPortal(
     <div className="pointer-events-none fixed bottom-4 right-4 z-[100] flex w-full max-w-sm flex-col gap-2">
       {toasts.map((t) => {
         const Icon = ICONS[t.kind];
@@ -43,6 +44,7 @@ export function Toaster() {
           </div>
         );
       })}
-    </div>
+    </div>,
+    document.body,
   );
 }

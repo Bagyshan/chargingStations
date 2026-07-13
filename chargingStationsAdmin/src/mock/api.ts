@@ -15,6 +15,7 @@ import type {
   EnergyResponse,
   Granularity,
   GroupBy,
+  HourTariff,
   RevenueDataPoint,
   RevenueResponse,
   Role,
@@ -36,6 +37,9 @@ import {
 
 const isScoped = (scope: AuthScope) => scope.role === 'CONTRACTOR';
 const latency = () => sleep(180 + Math.random() * 320);
+
+/** Почасовые тарифы по станции (демо-хранилище в памяти). */
+const hourlyTariffs = new Map<string, HourTariff[]>();
 
 function scopeStations(scope: AuthScope): ChargeBox[] {
   if (!isScoped(scope)) return chargeBoxes;
@@ -273,6 +277,16 @@ export const mockApi = {
     if (!u) throw new Error('Пользователь не найден');
     u.balance = (u.balance ?? 0) + amount;
     return { userId: keycloakId, balance: u.balance, booking: false };
+  },
+
+  async getHourlyTariffs(_scope: AuthScope, stationId: string): Promise<HourTariff[]> {
+    await latency();
+    return hourlyTariffs.get(stationId) ?? [];
+  },
+
+  async saveHourlyTariffs(_scope: AuthScope, stationId: string, tariffs: HourTariff[]): Promise<void> {
+    await latency();
+    hourlyTariffs.set(stationId, tariffs);
   },
 
   /* ---------------------------- Аналитика ---------------------------- */

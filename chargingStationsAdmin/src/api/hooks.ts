@@ -7,7 +7,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/api/client';
 import { useAuth } from '@/store/auth';
 import type { AnalyticsOptions } from '@/types/api';
-import type { ChargeBox, Connector, Role, ServiceStatus } from '@/types/domain';
+import type { ChargeBox, Connector, HourTariff, Role, ServiceStatus } from '@/types/domain';
 
 function useScopeKey() {
   const account = useAuth((s) => s.account);
@@ -219,5 +219,25 @@ export function useTopUp() {
       qc.invalidateQueries({ queryKey: ['user-balance', v.keycloakId] });
       qc.invalidateQueries({ queryKey: ['users'] });
     },
+  });
+}
+
+export function useHourlyTariffs(stationId?: string) {
+  const scope = useAuth((s) => s.scope)();
+  const key = useScopeKey();
+  return useQuery({
+    queryKey: ['hourly-tariffs', stationId ?? '-', ...key],
+    queryFn: () => api.getHourlyTariffs(scope, stationId!),
+    enabled: !!stationId,
+  });
+}
+
+export function useSaveHourlyTariffs() {
+  const scope = useAuth((s) => s.scope)();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ stationId, tariffs }: { stationId: string; tariffs: HourTariff[] }) =>
+      api.saveHourlyTariffs(scope, stationId, tariffs),
+    onSuccess: (_d, v) => qc.invalidateQueries({ queryKey: ['hourly-tariffs', v.stationId] }),
   });
 }

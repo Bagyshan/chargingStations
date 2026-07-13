@@ -1,4 +1,5 @@
 import { useEffect, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 
 /** Боковая панель справа. Закрытие по Esc / клику вне. */
@@ -26,7 +27,7 @@ export function Drawer({
 
   if (!open) return null;
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-[80]">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
       <aside
@@ -50,6 +51,7 @@ export function Drawer({
           <div className="flex items-center gap-2 border-t border-border p-4">{footer}</div>
         )}
       </aside>
-    </div>
+    </div>,
+    document.body,
   );
 }

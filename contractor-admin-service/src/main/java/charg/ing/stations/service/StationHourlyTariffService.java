@@ -2,6 +2,7 @@ package charg.ing.stations.service;
 
 import charg.ing.stations.dto.request.HourTariffRequest;
 import charg.ing.stations.dto.request.UpdateStationTariffsRequest;
+import charg.ing.stations.dto.response.HourTariffResponse;
 import charg.ing.stations.entity.StationHourlyTariffEntity;
 import charg.ing.stations.repository.StationHourlyTariffRepository;
 import lombok.RequiredArgsConstructor;
@@ -10,6 +11,7 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.time.Instant;
+import java.util.Comparator;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -19,6 +21,13 @@ import java.util.stream.Collectors;
 public class StationHourlyTariffService {
 
     private final StationHourlyTariffRepository repository;
+
+    /** Текущее почасовое расписание тарифов станции (0–23), по возрастанию часа. */
+    public Flux<HourTariffResponse> getStationTariffs(String stationId) {
+        return repository.findByStationId(stationId)
+                .sort(Comparator.comparingInt(StationHourlyTariffEntity::getHour))
+                .map(e -> new HourTariffResponse(e.getHour(), e.getKwCost(), e.getBookingMinuteCost()));
+    }
 
     public Mono<Void> saveStationTariffs(
             String stationId,

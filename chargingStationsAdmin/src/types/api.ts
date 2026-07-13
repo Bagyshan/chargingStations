@@ -12,6 +12,7 @@ import type {
   EnergyResponse,
   Granularity,
   GroupBy,
+  HourTariff,
   RevenueResponse,
   Role,
   ServiceStatus,
@@ -77,6 +78,8 @@ export interface DataApi {
   setUserActive(scope: AuthScope, id: number, active: boolean): Promise<User>;
   getUserBalance(scope: AuthScope, keycloakId: string): Promise<UserBalance | null>;
   topUpUser(scope: AuthScope, keycloakId: string, amount: number): Promise<UserBalance>;
+  getHourlyTariffs(scope: AuthScope, stationId: string): Promise<HourTariff[]>;
+  saveHourlyTariffs(scope: AuthScope, stationId: string, tariffs: HourTariff[]): Promise<void>;
   getEnergyAnalytics(scope: AuthScope, opts: AnalyticsOptions): Promise<EnergyResponse>;
   getRevenueAnalytics(scope: AuthScope, opts: AnalyticsOptions): Promise<RevenueResponse>;
   getBookingAnalytics(scope: AuthScope, opts: AnalyticsOptions): Promise<BookingAnalyticsResponse>;
