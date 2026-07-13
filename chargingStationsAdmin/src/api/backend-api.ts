@@ -5,6 +5,7 @@
  */
 import { SERVICE } from './config';
 import { ApiError, request } from './http';
+import { parseDate } from '@/lib/format';
 import { pickRole, rolesOf, subOf } from './jwt';
 import { tokenStore } from './token-store';
 import type { Account, AnalyticsOptions, AuthProvider, DataApi, Owner, UserBalance } from '@/types/api';
@@ -87,6 +88,20 @@ interface RawBooking {
   createdAt: string;
 }
 
+interface RawAdminBooking {
+  bookingId: string;
+  userId: string;
+  stationId: string;
+  connectorId: number;
+  status: string;
+  pricePerMinute?: number;
+  totalMinutes?: number;
+  totalSum?: number;
+  startedAt: string;
+  endedAt?: string;
+  createdAt: string;
+}
+
 interface RawTransaction {
   id: number;
   transactionId: number;
@@ -115,8 +130,8 @@ interface RawUser {
   emailVerified?: boolean;
   phoneVerified?: boolean;
   active?: boolean;
-  createdAt?: string;
-  lastLoginAt?: string;
+  createdAt?: string | number[];
+  lastLoginAt?: string | number[];
 }
 
 interface RawAddress {
@@ -276,11 +291,33 @@ export const backendApi: DataApi = {
     await request<void>(`${CA}/api/connectors/${id}`, { method: 'DELETE' });
   },
 
-  async getBookings(): Promise<Booking[]> {
-    const [raw, stations] = await Promise.all([
-      request<RawBooking[]>(`${CA}/api/bookings`),
-      stationMap(),
-    ]);
+  async getBookings(scope): Promise<Booking[]> {
+    const stations = await stationMap();
+    const addr = (sid: string) => stations.get(sid)?.address?.addressName;
+
+    // ADMIN/SPECIALIST — все брони из booking-service (мирор contractor-admin
+    // пуст; booking-service /all отдаёт полный список). CONTRACTOR — мирор со
+    // скоупом по владельцу станций.
+    if (scope.role === 'ADMIN' || scope.role === 'SPECIALIST') {
+      const raw = await request<RawAdminBooking[]>(`${SERVICE.booking}/api/bookings/all`);
+      return raw.map((b, i) => ({
+        id: i + 1,
+        bookingId: b.bookingId,
+        userId: b.userId,
+        stationId: b.stationId,
+        connectorId: b.connectorId,
+        pricePerMinute: b.pricePerMinute ?? 0,
+        totalSum: b.totalSum ?? 0,
+        totalMinutes: b.totalMinutes ?? 0,
+        startedAt: b.startedAt,
+        endedAt: b.endedAt ?? null,
+        status: b.status as BookingStatus,
+        createdAt: b.createdAt,
+        addressName: addr(b.stationId),
+      }));
+    }
+
+    const raw = await request<RawBooking[]>(`${CA}/api/bookings`);
     return raw
       .map((b) => ({
         id: b.id,
@@ -295,7 +332,7 @@ export const backendApi: DataApi = {
         endedAt: b.endedAt ?? null,
         status: b.status as BookingStatus,
         createdAt: b.createdAt,
-        addressName: stations.get(b.stationId)?.address?.addressName,
+        addressName: addr(b.stationId),
       }))
       .sort((a, b) => +new Date(b.startedAt) - +new Date(a.startedAt));
   },
@@ -433,8 +470,8 @@ function mapUser(u: RawUser): User {
     emailVerified: !!u.emailVerified,
     phoneVerified: !!u.phoneVerified,
     active: u.active ?? true,
-    createdAt: u.createdAt ?? new Date().toISOString(),
-    lastLoginAt: u.lastLoginAt ?? null,
+    createdAt: parseDate(u.createdAt)?.toISOString() ?? new Date().toISOString(),
+    lastLoginAt: parseDate(u.lastLoginAt)?.toISOString() ?? null,
   };
 }
 

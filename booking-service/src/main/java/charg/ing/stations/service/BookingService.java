@@ -7,6 +7,7 @@ import charg.ing.stations.dto.kafka.PaymentResponse;
 import charg.ing.stations.dto.kafka.StationRequest;
 import charg.ing.stations.dto.kafka.StationResponse;
 import charg.ing.stations.dto.request.BookingRequest;
+import charg.ing.stations.dto.responses.AdminBookingResponse;
 import charg.ing.stations.dto.responses.BookingHistoryResponse;
 import charg.ing.stations.dto.responses.BookingResponse;
 import charg.ing.stations.entity.BookingEntity;
@@ -44,6 +45,28 @@ public class BookingService {
     public Flux<BookingHistoryResponse> getUserBookings(UUID userId) {
         return bookingRepository.findByUserIdOrderByCreatedAtDesc(userId)
                 .map(this::toHistory);
+    }
+
+    /** Все бронирования (для админ-панели), новые — первыми. */
+    public Flux<AdminBookingResponse> getAllBookings() {
+        return bookingRepository.findAllByOrderByStartedAtDesc()
+                .map(this::toAdmin);
+    }
+
+    private AdminBookingResponse toAdmin(BookingEntity b) {
+        return AdminBookingResponse.builder()
+                .bookingId(b.getBookingId())
+                .userId(b.getUserId())
+                .stationId(b.getStationId())
+                .connectorId(b.getConnectorId())
+                .status(b.getStatus())
+                .pricePerMinute(b.getPricePerMinute())
+                .totalMinutes(b.getTotalMinutes())
+                .totalSum(b.getTotalSum())
+                .startedAt(b.getStartedAt())
+                .endedAt(b.getEndedAt())
+                .createdAt(b.getCreatedAt())
+                .build();
     }
 
     private BookingHistoryResponse toHistory(BookingEntity b) {

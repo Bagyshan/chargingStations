@@ -50,20 +50,33 @@ const dateFmt = new Intl.DateTimeFormat('ru-RU', {
   year: 'numeric',
 });
 
-export function formatDateTime(iso: string | Date | null | undefined): string {
-  if (!iso) return '—';
-  return dateTimeFmt.format(new Date(iso));
+/** Безопасный разбор даты: строка/Date/Java-массив [y,mo,d,h,mi,s,nanos] → Date | null. */
+export function parseDate(iso: string | number[] | Date | null | undefined): Date | null {
+  if (iso == null) return null;
+  if (Array.isArray(iso)) {
+    const [y, mo = 1, d = 1, h = 0, mi = 0, s = 0, nanos = 0] = iso;
+    const dt = new Date(y, mo - 1, d, h, mi, s, Math.floor(nanos / 1e6));
+    return Number.isNaN(dt.getTime()) ? null : dt;
+  }
+  const dt = new Date(iso);
+  return Number.isNaN(dt.getTime()) ? null : dt;
 }
 
-export function formatDate(iso: string | Date | null | undefined): string {
-  if (!iso) return '—';
-  return dateFmt.format(new Date(iso));
+export function formatDateTime(iso: string | number[] | Date | null | undefined): string {
+  const d = parseDate(iso);
+  return d ? dateTimeFmt.format(d) : '—';
+}
+
+export function formatDate(iso: string | number[] | Date | null | undefined): string {
+  const d = parseDate(iso);
+  return d ? dateFmt.format(d) : '—';
 }
 
 /** Относительное время: «5 мин назад», «2 ч назад». */
-export function formatRelative(iso: string | Date | null | undefined): string {
-  if (!iso) return '—';
-  const diff = Date.now() - new Date(iso).getTime();
+export function formatRelative(iso: string | number[] | Date | null | undefined): string {
+  const parsed = parseDate(iso);
+  if (!parsed) return '—';
+  const diff = Date.now() - parsed.getTime();
   const min = Math.floor(diff / 60000);
   if (min < 1) return 'только что';
   if (min < 60) return `${min} мин назад`;

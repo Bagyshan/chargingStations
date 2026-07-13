@@ -17,4 +17,7 @@ public interface BookingRepository extends R2dbcRepository<BookingEntity, UUID> 
 
     Flux<BookingEntity> findByUserIdOrderByCreatedAtDesc(UUID userId);
 
+    /** Все бронирования, новые — первыми (для админ-панели). */
+    Flux<BookingEntity> findAllByOrderByStartedAtDesc();
+
 }

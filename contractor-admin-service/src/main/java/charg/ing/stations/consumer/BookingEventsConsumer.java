@@ -13,9 +13,13 @@ import org.springframework.context.event.EventListener;
 import org.springframework.dao.DataAccessException;
 import org.springframework.stereotype.Component;
 import reactor.core.Disposable;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.kafka.receiver.KafkaReceiver;
+import reactor.kafka.receiver.ReceiverRecord;
+import reactor.util.retry.Retry;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Map;
 import java.util.Set;
@@ -35,35 +39,53 @@ public class BookingEventsConsumer {
     @EventListener(ApplicationReadyEvent.class)
     public void startConsuming() {
         log.info("Starting BookingEventsConsumer for topic booking.events");
-        subscription = KafkaReceiver.create(
-                receiverFactory.create("contractor-admin-booking-consumer", Set.of("booking.events"))
-        )
-        .receive()
-        .flatMap(record -> {
-            @SuppressWarnings("unchecked")
-            Map<String, Object> payload = (Map<String, Object>) record.value();
-            BookingEventMessage event = objectMapper.convertValue(payload, BookingEventMessage.class);
+        // Flux.defer + retryWhen: если стрим падает (ошибка БД/брокера) — пере-подписываемся
+        // и продолжаем. Раньше любая ошибка (в т.ч. один «ядовитый» запис) убивала консьюмер
+        // навсегда, и мирор бронирований оставался пустым.
+        subscription = Flux.defer(() ->
+                        KafkaReceiver.create(
+                                receiverFactory.create("contractor-admin-booking-consumer", Set.of("booking.events"))
+                        ).receive()
+                )
+                .concatMap(this::handleRecord)
+                .retryWhen(Retry.backoff(Long.MAX_VALUE, Duration.ofSeconds(2))
+                        .maxBackoff(Duration.ofSeconds(30))
+                        .doBeforeRetry(rs -> log.warn(
+                                "booking.events consumer stream failed — resubscribing (attempt {}): {}",
+                                rs.totalRetries() + 1, String.valueOf(rs.failure()))))
+                .subscribe(
+                        v -> {},
+                        e -> log.error("booking.events consumer permanently stopped", e)
+                );
+    }
 
-            Mono<Void> processing = "START_RESERVATION".equals(event.getEventType())
-                    ? handleStartReservation(event)
-                    : handleStopReservation(event);
+    /**
+     * Обработка одной записи. Парсинг вынесен ВНУТРЬ реактивной цепочки, поэтому
+     * «битое» сообщение (не Map / чужой формат / null) не роняет весь стрим:
+     *  - ошибка БД → offset НЕ коммитим, пробрасываем (стрим пере-подпишется, запись переобработается);
+     *  - любая другая ошибка → логируем, коммитим offset и пропускаем запись.
+     */
+    private Mono<Void> handleRecord(ReceiverRecord<String, Object> record) {
+        return Mono.defer(() -> {
+                    BookingEventMessage event = parse(record);
+                    Mono<Void> processing = "START_RESERVATION".equals(event.getEventType())
+                            ? handleStartReservation(event)
+                            : handleStopReservation(event);
+                    return processing.doOnSuccess(v -> record.receiverOffset().acknowledge());
+                })
+                .onErrorResume(DataAccessException.class, Mono::error)
+                .onErrorResume(e -> {
+                    log.error("Skipping bad booking.events record (offset={}): {}",
+                            record.offset(), e.toString());
+                    record.receiverOffset().acknowledge();
+                    return Mono.empty();
+                });
+    }
 
-            return processing
-                    .doOnSuccess(v -> record.receiverOffset().acknowledge())
-                    .onErrorResume(DataAccessException.class, e -> {
-                        log.error("DB error processing booking.events bookingId={} — offset NOT committed, consumer will restart", event.getBookingId(), e);
-                        return Mono.error(e);
-                    })
-                    .onErrorResume(e -> {
-                        log.error("Business error processing booking.events bookingId={} — skipping", event.getBookingId(), e);
-                        record.receiverOffset().acknowledge();
-                        return Mono.empty();
-                    });
-        })
-        .subscribe(
-                v -> {},
-                e -> log.error("Fatal error in booking.events consumer", e)
-        );
+    private BookingEventMessage parse(ReceiverRecord<String, Object> record) {
+        @SuppressWarnings("unchecked")
+        Map<String, Object> payload = (Map<String, Object>) record.value();
+        return objectMapper.convertValue(payload, BookingEventMessage.class);
     }
 
     private Mono<Void> handleStartReservation(BookingEventMessage event) {

@@ -41,6 +41,7 @@ const BOOKING: Record<BookingStatus, Meta> = {
   STOP_RESERVATION: { label: 'Завершена', variant: 'success' },
   CANCELLED: { label: 'Отменена', variant: 'default' },
   REJECTED: { label: 'Отклонена', variant: 'danger' },
+  FAILED: { label: 'Не удалась', variant: 'danger' },
 };
 
 const ROLE: Record<Role, BadgeProps['variant']> = {

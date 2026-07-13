@@ -37,7 +37,8 @@ export type BookingStatus =
   | 'ACTIVE'
   | 'COMPLETED'
   | 'CANCELLED'
-  | 'REJECTED';
+  | 'REJECTED'
+  | 'FAILED';
 
 /** Charge box = зарядная станция (contractor-admin ChargeBoxResponse). */
 export interface ChargeBox {
