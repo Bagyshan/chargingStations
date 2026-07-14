@@ -42,6 +42,7 @@
     <include file="changes/0031-add-connectivity-to-charge-box.sql" relativeToChangelogFile="true"/>
     <include file="changes/0032-add-code-to-connector-type.sql" relativeToChangelogFile="true"/>
     <include file="changes/0033-seed-connector-types.sql" relativeToChangelogFile="true"/>
+    <include file="changes/0034-add-last-charging-ended-at-to-connector.sql" relativeToChangelogFile="true"/>
 
 
 

@@ -11,5 +11,7 @@ public enum UnavailabilityReason {
     OFFLINE,
     NOT_OPERATIONAL,
     RESERVED_BY_OTHER,
-    ALREADY_RESERVED
+    ALREADY_RESERVED,
+    /** Коннектор недавно заряжал: бронь запрещена в течение кулдауна после окончания зарядки. */
+    COOLDOWN
 }

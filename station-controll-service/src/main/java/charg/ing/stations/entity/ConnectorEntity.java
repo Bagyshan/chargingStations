@@ -46,6 +46,10 @@ public class ConnectorEntity {
     @Column(name = "booking_user_id")
     private String bookingUserId;
 
+    /** Момент окончания последней зарядки на коннекторе — база для 10-минутного кулдауна брони. */
+    @Column(name = "last_charging_ended_at")
+    private Instant lastChargingEndedAt;
+
     @Version
     @Column(name = "version")
     private Long version;

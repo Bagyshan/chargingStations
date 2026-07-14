@@ -68,8 +68,17 @@ public class ReservationService {
             newStatus = ConnectorStatus.RESERVED.getValue();
             bookingUserId = event.getUserId().toString();
         } else if (event.getEventType() == BookingEventMessage.EventType.STOP_RESERVATION) {
-            // При завершении бронирования возвращаем статус в AVAILABLE и очищаем userId
-            newStatus = ConnectorStatus.AVAILABLE.getValue();
+            // При завершении бронирования очищаем userId. НО если на коннекторе уже идёт
+            // зарядка (бронь была «поглощена» стартом зарядки — StartTransaction обнулил
+            // bookingUserId), НЕ сбрасываем статус в AVAILABLE, иначе гонка событий затрёт
+            // активную зарядку. В этом случае оставляем текущий статус (Charging).
+            if (ConnectorStatus.CHARGING.getValue().equals(connector.getStatus())) {
+                log.info("Connector {} is charging — STOP_RESERVATION keeps status CHARGING, only releases hold",
+                        connectorId);
+                newStatus = connector.getStatus();
+            } else {
+                newStatus = ConnectorStatus.AVAILABLE.getValue();
+            }
             // Можно проверить, что bookingUserId совпадает, но для надёжности просто очищаем
             if (connector.getBookingUserId() != null && !connector.getBookingUserId().equals(event.getUserId().toString())) {
                 log.warn("Connector {} was reserved by user {}, but stop event from user {} – will release anyway",

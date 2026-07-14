@@ -13,6 +13,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
+import java.time.Instant;
+
 /**
  * Единая точка проверки доступности станции/коннектора для брони и зарядки — закрывает
  * «unhappy case» сломанных (OCPP {@code Faulted}/{@code Unavailable}) и административно
@@ -28,6 +31,9 @@ public class StationAvailabilityService {
 
     private final ChargeBoxRepository chargeBoxRepository;
     private final ConnectorRepository connectorRepository;
+
+    /** Сколько нельзя бронировать коннектор после окончания последней зарядки. */
+    private static final Duration BOOKING_COOLDOWN = Duration.ofMinutes(10);
 
     /**
      * Можно ли пользователю {@code userId} запустить зарядку на коннекторе. Блокирует только
@@ -88,6 +94,17 @@ public class StationAvailabilityService {
         }
         if (connector.getBookingUserId() != null) {
             return AvailabilityResult.deny(UnavailabilityReason.ALREADY_RESERVED, "Connector is already reserved");
+        }
+        // Кулдаун: коннектор нельзя бронировать в течение BOOKING_COOLDOWN после окончания
+        // последней зарядки (даёт время освободить место / отъехать предыдущему авто).
+        Instant lastChargeEnd = connector.getLastChargingEndedAt();
+        if (lastChargeEnd != null) {
+            Duration sinceCharge = Duration.between(lastChargeEnd, Instant.now());
+            if (sinceCharge.compareTo(BOOKING_COOLDOWN) < 0) {
+                long waitMinutes = BOOKING_COOLDOWN.minus(sinceCharge).toMinutes() + 1;
+                return AvailabilityResult.deny(UnavailabilityReason.COOLDOWN,
+                        "Connector was recently charging; booking available in ~" + waitMinutes + " min");
+            }
         }
         return AvailabilityResult.ok();
     }

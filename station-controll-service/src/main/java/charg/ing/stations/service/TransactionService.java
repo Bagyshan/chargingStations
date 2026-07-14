@@ -168,6 +168,9 @@ public class TransactionService implements EventService {
 
             connector.setVersion(connector.getVersion() + 1);
             connector.setChargingUserId(req.getUserId());
+            // Старт зарядки «поглощает» бронь этого коннектора: снимаем удержание, чтобы
+            // событие STOP_RESERVATION (при завершении брони) не считало коннектор занятым.
+            connector.setBookingUserId(null);
             chargeBox.setVersion(chargeBox.getVersion() + 1);
 
             connectorRepository.save(connector);
@@ -263,6 +266,8 @@ public class TransactionService implements EventService {
             connector.setStatus(ConnectorStatus.AVAILABLE.getValue());
             connector.setVersion(connector.getVersion() + 1);
             connector.setChargingUserId(null);
+            // Фиксируем конец зарядки — с этого момента коннектор нельзя бронировать 10 минут.
+            connector.setLastChargingEndedAt(Instant.now());
             chargeBox.setVersion(chargeBox.getVersion() + 1);
 
             connectorRepository.save(connector);
