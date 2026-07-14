@@ -102,8 +102,10 @@ public class StationAvailabilityService {
             Duration sinceCharge = Duration.between(lastChargeEnd, Instant.now());
             if (sinceCharge.compareTo(BOOKING_COOLDOWN) < 0) {
                 long waitMinutes = BOOKING_COOLDOWN.minus(sinceCharge).toMinutes() + 1;
+                // Маркер "COOLDOWN <минут>" — стабильный признак для клиента: мобильное
+                // приложение по нему показывает всплывающее окно с числом минут ожидания.
                 return AvailabilityResult.deny(UnavailabilityReason.COOLDOWN,
-                        "Connector was recently charging; booking available in ~" + waitMinutes + " min");
+                        "COOLDOWN " + waitMinutes + " min — connector was recently charging");
             }
         }
         return AvailabilityResult.ok();
