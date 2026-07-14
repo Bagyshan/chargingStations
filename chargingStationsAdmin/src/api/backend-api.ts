@@ -113,6 +113,7 @@ interface RawTransaction {
   stopTimestamp?: string;
   stopValue?: number;
   transactionValue?: number;
+  totalSum?: number;
   status: string;
   reason?: string;
   userId: string;
@@ -353,7 +354,9 @@ export const backendApi: DataApi = {
         startValue: t.startValue ?? 0,
         stopTimestamp: t.stopTimestamp ?? null,
         stopValue: t.stopValue ?? null,
-        transactionValue: t.transactionValue ?? 0,
+        // transaction_value приходит в Вт·ч — в модели держим кВт·ч (как в моке).
+        transactionValue: (t.transactionValue ?? 0) / 1000,
+        totalSum: t.totalSum ?? 0,
         status: t.status as TransactionStatus,
         reason: t.reason ?? null,
         userId: t.userId,

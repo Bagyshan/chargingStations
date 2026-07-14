@@ -93,7 +93,11 @@ async function exec<T>(
     throw new ApiError(res.status, message);
   }
 
+  // Пустое тело (204, либо 200 с ResponseEntity.ok().build()) — res.json() бы упал
+  // «Unexpected end of JSON input», поэтому читаем текст и парсим только непустой.
   if (res.status === 204) return undefined as T;
-  const json = await res.json();
+  const text = await res.text();
+  if (!text) return undefined as T;
+  const json = JSON.parse(text);
   return (unwrap ? json?.data : json) as T;
 }

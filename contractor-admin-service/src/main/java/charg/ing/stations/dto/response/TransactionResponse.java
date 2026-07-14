@@ -6,6 +6,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 
 @Data
@@ -28,8 +29,12 @@ public class TransactionResponse {
     private Instant stopTimestamp;
     private Integer stopValue;
 
-    @Schema(description = "Energy consumed (stopValue - startValue)")
+    @Schema(description = "Energy consumed in Wh (stopValue - startValue)")
     private Integer transactionValue;
+
+    @Schema(description = "Стоимость зарядки, сом. Если оплата не сведена (total_sum пуст) — "
+            + "оценка: энергия(кВт·ч) × тариф (price_per_kwh, иначе тариф станции)")
+    private BigDecimal totalSum;
 
     @Schema(description = "Transaction status", example = "ACTIVE",
             allowableValues = {"ACTIVE", "COMPLETED", "CANCELLED", "REJECTED"})
