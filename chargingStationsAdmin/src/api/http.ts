@@ -21,6 +21,8 @@ interface RequestOptions {
   body?: unknown;
   auth?: boolean;
   unwrap?: boolean;
+  /** Ответ — не JSON, а plain text (напр. state-updater/reload). Вернуть текст как есть, без JSON.parse. */
+  raw?: boolean;
 }
 
 let refreshing: Promise<boolean> | null = null;
@@ -55,8 +57,8 @@ function ensureRefresh(): Promise<boolean> {
 }
 
 export async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
-  const { method = 'GET', body, auth = true, unwrap = false } = opts;
-  return exec<T>(path, method, body, auth, unwrap, false);
+  const { method = 'GET', body, auth = true, unwrap = false, raw = false } = opts;
+  return exec<T>(path, method, body, auth, unwrap, raw, false);
 }
 
 async function exec<T>(
@@ -65,6 +67,7 @@ async function exec<T>(
   body: unknown,
   auth: boolean,
   unwrap: boolean,
+  raw: boolean,
   retried: boolean,
 ): Promise<T> {
   const headers: Record<string, string> = { Accept: 'application/json' };
@@ -79,7 +82,7 @@ async function exec<T>(
 
   if (res.status === 401 && auth && !retried) {
     const ok = await ensureRefresh();
-    if (ok) return exec<T>(path, method, body, auth, unwrap, true);
+    if (ok) return exec<T>(path, method, body, auth, unwrap, raw, true);
   }
 
   if (!res.ok) {
@@ -98,6 +101,7 @@ async function exec<T>(
   if (res.status === 204) return undefined as T;
   const text = await res.text();
   if (!text) return undefined as T;
+  if (raw) return text as T; // plain-text ответ (state-updater/reload и т.п.) — не парсим
   const json = JSON.parse(text);
   return (unwrap ? json?.data : json) as T;
 }

@@ -468,6 +468,15 @@ export const backendApi: DataApi = {
   async getBookingAnalytics(_scope, opts): Promise<BookingAnalyticsResponse> {
     return request<BookingAnalyticsResponse>(`${CA}/api/analytics/bookings?${qs(opts)}`);
   },
+
+  async reloadState(_scope): Promise<string> {
+    // POST /state-updater/api/state-updater/reload → перегрев кэша Redis из БД.
+    // Ответ — plain text ("Data reload initiated successfully"), поэтому raw.
+    return request<string>(`${SERVICE.stateUpdater}/api/state-updater/reload`, {
+      method: 'POST',
+      raw: true,
+    });
+  },
 };
 
 interface RawRevenue extends Omit<RevenueResponse, 'summary'> {

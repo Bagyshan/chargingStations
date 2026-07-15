@@ -404,6 +404,11 @@ export const mockApi = {
       series,
     };
   },
+
+  async reloadState(_scope: AuthScope): Promise<string> {
+    await latency();
+    return 'Кэш Redis перезагружен (демо-режим)';
+  },
 };
 
 /* ------------------------------ Аналитика: утилиты ------------------------------ */

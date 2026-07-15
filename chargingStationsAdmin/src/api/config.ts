@@ -16,4 +16,5 @@ export const SERVICE = {
   stationControll: '/station-controll',
   payment: '/payment',
   booking: '/booking',
+  stateUpdater: '/state-updater',
 } as const;

@@ -1,19 +1,31 @@
-import { Database, Moon, Server, Sun } from 'lucide-react';
+import { Database, DatabaseZap, Loader2, Moon, RefreshCw, Server, Sun } from 'lucide-react';
 import { PageHeader } from '@/components/page-header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar } from '@/components/ui/avatar';
+import { Button } from '@/components/ui/button';
 import { Segmented } from '@/components/ui/segmented';
 import { RoleBadge } from '@/components/status';
 import { USE_MOCK } from '@/api/client';
+import { useReloadState } from '@/api/hooks';
 import { useAuth } from '@/store/auth';
 import { useTheme } from '@/store/theme';
+import { toast } from '@/store/toast';
 
 export function SettingsPage() {
   const account = useAuth((s) => s.account);
   const { theme, setTheme } = useTheme();
+  const reload = useReloadState();
+  const canReload = account?.role === 'ADMIN' || account?.role === 'SPECIALIST';
   const name = account
     ? `${account.firstName ?? ''} ${account.lastName ?? ''}`.trim() || account.email
     : '—';
+
+  function onReload() {
+    reload.mutate(undefined, {
+      onSuccess: (message) => toast.success('Кэш Redis обновлён', message),
+      onError: (e) => toast.error('Не удалось обновить кэш', (e as Error).message),
+    });
+  }
 
   return (
     <div className="space-y-6">
@@ -75,6 +87,39 @@ export function SettingsPage() {
             </p>
           </CardContent>
         </Card>
+
+        {canReload && (
+          <Card className="lg:col-span-2">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <DatabaseZap className="size-4 text-accent" />
+                Обслуживание
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="text-sm text-muted-foreground">
+                  <div className="font-medium text-foreground">Обновить данные в Redis</div>
+                  Перегреть кэш состояния из БД через state-updater. Используйте, если данные
+                  станций/коннекторов в кэше рассинхронизировались.
+                </div>
+                <Button
+                  variant="outline"
+                  onClick={onReload}
+                  disabled={reload.isPending}
+                  className="shrink-0"
+                >
+                  {reload.isPending ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="size-4" />
+                  )}
+                  {reload.isPending ? 'Обновление…' : 'Обновить кэш Redis'}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
       </div>
     </div>
   );

@@ -83,6 +83,8 @@ export interface DataApi {
   getEnergyAnalytics(scope: AuthScope, opts: AnalyticsOptions): Promise<EnergyResponse>;
   getRevenueAnalytics(scope: AuthScope, opts: AnalyticsOptions): Promise<RevenueResponse>;
   getBookingAnalytics(scope: AuthScope, opts: AnalyticsOptions): Promise<BookingAnalyticsResponse>;
+  /** Перезагрузка кэша Redis из state-updater-service (ADMIN/SPECIALIST). Возвращает текст ответа. */
+  reloadState(scope: AuthScope): Promise<string>;
 }
 
 export interface AuthProvider {

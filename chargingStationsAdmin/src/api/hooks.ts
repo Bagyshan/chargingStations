@@ -241,3 +241,17 @@ export function useSaveHourlyTariffs() {
     onSuccess: (_d, v) => qc.invalidateQueries({ queryKey: ['hourly-tariffs', v.stationId] }),
   });
 }
+
+/** Перезагрузка кэша Redis (state-updater). Только ADMIN/SPECIALIST. */
+export function useReloadState() {
+  const scope = useAuth((s) => s.scope)();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.reloadState(scope),
+    onSuccess: () => {
+      // Redis перегрет — обновим данные, зависящие от кэша состояния.
+      qc.invalidateQueries({ queryKey: ['stations'] });
+      qc.invalidateQueries({ queryKey: ['connectors'] });
+    },
+  });
+}
