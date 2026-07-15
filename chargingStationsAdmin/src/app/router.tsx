@@ -58,9 +58,14 @@ const routeTree = rootRoute.addChildren([
   ]),
 ]);
 
+// Префикс развёртывания. В проде vite строит с base '/console/' → BASE_URL = '/console/';
+// в dev BASE_URL = '/'. Роутеру basepath нужен без завершающего слэша.
+const basepath = import.meta.env.BASE_URL.replace(/\/$/, '');
+
 export const router = createRouter({
   routeTree,
   defaultPreload: 'intent',
+  basepath: basepath || undefined,
 });
 
 declare module '@tanstack/react-router' {

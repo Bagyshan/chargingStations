@@ -641,6 +641,9 @@ services:
       # - "443:443"   # включить вместе с ssl-блоком в nginx/conf.d/default.conf
     volumes:
       - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      # Статика админ-панели (React SPA) — раздаётся на /console/. Собирается
+      # `chargingStationsAdmin` → npm run build (см. deploy-admin.sh / DEPLOY.md).
+      - ./chargingStationsAdmin/dist:/usr/share/nginx/html/console:ro
       # - ./nginx/certs:/etc/nginx/certs:ro   # сертификаты для HTTPS (позже)
     networks: [charging-stations-network]
     depends_on:

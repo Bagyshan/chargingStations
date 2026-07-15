@@ -16,6 +16,21 @@ nano .env
 ```
 `deploy.sh --no-build` — поднять стек без пересборки jar.
 
+### Веб-админка (chargingStationsAdmin) на /console/
+Раздаётся как статика прямо из nginx (без прокси-хопа), путь `http://<SERVER_HOST>/console/`.
+```bash
+./deploy-admin.sh             # npm ci + npm run build → dist, затем пересоздать nginx
+./deploy-admin.sh --no-build  # применить уже собранный dist
+```
+- Собирается в **api-режиме** (`chargingStationsAdmin/.env.production`): запросы идут по
+  относительным путям на тот же origin → nginx → api-gateway. CORS нет (same-origin).
+- `dist` бинд-маунтится в nginx (`./chargingStationsAdmin/dist:/usr/share/nginx/html/console:ro`),
+  ассеты Vite кэшируются `immutable` на год, `index.html` — `no-cache`.
+- Нужен Node.js 20+ на машине сборки. Нет Node на сервере → собери `npm run build` локально и
+  залей папку `dist` (она в .gitignore, через git не поедет — используй rsync/scp).
+- **Повторный деплой панели:** достаточно `npm run build` — nginx отдаёт новые файлы сразу,
+  пересоздавать контейнер не нужно (SPA-`index.html` без кэша подхватит новые хэши ассетов).
+
 ## Что нужно в .env
 - `SERVER_HOST` — публичный IP (или домен) сервера. Используется в issuer токенов Keycloak,
   ссылках в письмах и callback-URL O!Dengi.
@@ -42,6 +57,7 @@ nano .env
 | SteVe (OCPP менеджер) | `http://<SERVER_HOST>/steve/manager` | admin / 1234 (config/docker/main.properties) |
 | Consul UI | `http://<SERVER_HOST>/ui/` | — |
 | Kafka-UI | `http://<SERVER_HOST>/kafka/` | — |
+| **Веб-админка BatEnergy** | `http://<SERVER_HOST>/console/` | учётка роли ADMIN/SPECIALIST/CONTRACTOR (вход через user-service) |
 
 > Всё проксируется через nginx (Keycloak — `/admin`,`/realms`,`/resources`,`/js`; SteVe — `/steve/`
 > вкл. OCPP WebSocket; Consul — `/ui/`+`/v1/`; Kafka-UI — `/kafka/`). Static-ресурсы работают.

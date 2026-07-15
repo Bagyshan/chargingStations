@@ -4,7 +4,7 @@ import tailwindcss from '@tailwindcss/vite';
 import path from 'node:path';
 
 // https://vite.dev/config/
-export default defineConfig(({ mode }) => {
+export default defineConfig(({ mode, command }) => {
   const env = loadEnv(mode, process.cwd(), '');
   const gateway = env.VITE_GATEWAY_URL || 'http://localhost:8010';
 
@@ -21,6 +21,10 @@ export default defineConfig(({ mode }) => {
   proxy['/websocket'] = { target: gateway, changeOrigin: true, ws: true };
 
   return {
+    // В проде панель раздаётся nginx'ом по пути /console/ (см. nginx/conf.d/default.conf):
+    // base влияет и на пути ассетов в index.html, и на клиентские маршруты (basepath роутера,
+    // берётся из import.meta.env.BASE_URL). В dev оставляем корень для удобства.
+    base: command === 'build' ? '/console/' : '/',
     plugins: [react(), tailwindcss()],
     resolve: {
       alias: { '@': path.resolve(__dirname, './src') },
