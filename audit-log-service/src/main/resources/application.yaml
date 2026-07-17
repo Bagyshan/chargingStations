@@ -39,3 +39,10 @@ logging:
 
 server:
   port: 8009
+
+# ---- Actuator: Prometheus-метрики для наблюдаемости (скрейпит OTel Collector-agent) ----
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "health,info,metrics,prometheus"

@@ -32,7 +32,8 @@ public class SecurityConfig {
                                 "/v3/api-docs/**",
                                 "/webjars/**",
                                 "/actuator/health",
-                                "/actuator/health/**"
+                                "/actuator/health/**",
+                                "/actuator/prometheus"
                         ).permitAll()
                         .pathMatchers("/api/**").hasAnyRole("ADMIN", "SPECIALIST")
                         .anyExchange().authenticated()

@@ -1,0 +1,93 @@
+# ============================================================================
+# OpenTelemetry Collector — AGENT (крутится на ПРОД-хосте, рядом с сервисами)
+# ----------------------------------------------------------------------------
+# Фаза 1: МЕТРИКИ. Локально скрейпит /actuator/prometheus каждого сервиса
+# (внутри charging-stations-network) и батчами шлёт по OTLP в gateway на
+# obs-VM (${OBSERVABILITY_OTLP_ENDPOINT}). Сервисы сами никуда не ходят —
+# для них это обычный входящий scrape, нулевая стоимость в пути запроса.
+#
+# В Фазе 2 сюда добавится receiver `filelog` (логи), в Фазе 3 — `otlp` (трейсы).
+# ============================================================================
+
+receivers:
+  # Скрейп Micrometer-эндпоинтов. job_name -> service.name в OTel.
+  prometheus:
+    config:
+      scrape_configs:
+        - job_name: station-controll-service
+          scrape_interval: 15s
+          metrics_path: /actuator/prometheus
+          static_configs: [{ targets: ['station-controll-service:8001'] }]
+        - job_name: station-integration-service
+          scrape_interval: 15s
+          metrics_path: /actuator/prometheus
+          static_configs: [{ targets: ['station-integration-service:8000'] }]
+        - job_name: state-updater-service
+          scrape_interval: 15s
+          metrics_path: /actuator/prometheus
+          static_configs: [{ targets: ['state-updater-service:8002'] }]
+        - job_name: websocket-service
+          scrape_interval: 15s
+          metrics_path: /actuator/prometheus
+          static_configs: [{ targets: ['websocket-service:8003'] }]
+        - job_name: contractor-admin-service
+          scrape_interval: 15s
+          metrics_path: /actuator/prometheus
+          static_configs: [{ targets: ['contractor-admin-service:8004'] }]
+        - job_name: user-service
+          scrape_interval: 15s
+          metrics_path: /actuator/prometheus
+          static_configs: [{ targets: ['user-service:8005'] }]
+        - job_name: notification-service
+          scrape_interval: 15s
+          metrics_path: /actuator/prometheus
+          static_configs: [{ targets: ['notification-service:8006'] }]
+        - job_name: payment-service
+          scrape_interval: 15s
+          metrics_path: /actuator/prometheus
+          static_configs: [{ targets: ['payment-service:8007'] }]
+        - job_name: booking-service
+          scrape_interval: 15s
+          metrics_path: /actuator/prometheus
+          static_configs: [{ targets: ['booking-service:8008'] }]
+        - job_name: audit-log-service
+          scrape_interval: 15s
+          metrics_path: /actuator/prometheus
+          static_configs: [{ targets: ['audit-log-service:8009'] }]
+        - job_name: api-gateway-service
+          scrape_interval: 15s
+          metrics_path: /actuator/prometheus
+          static_configs: [{ targets: ['api-gateway-service:8010'] }]
+
+processors:
+  memory_limiter:
+    check_interval: 2s
+    limit_percentage: 75
+    spike_limit_percentage: 20
+  batch:
+    send_batch_size: 1024
+    timeout: 5s
+
+exporters:
+  # OTLP в gateway на obs-VM. Адрес задаётся env OBSERVABILITY_OTLP_ENDPOINT
+  # (например obs-vm-host:4317). Линк держать в приватной сети/VPN.
+  otlp/gateway:
+    endpoint: ${env:OBSERVABILITY_OTLP_ENDPOINT}
+    tls:
+      insecure: true
+    # если gateway недоступен — буферизуем, а не роняем метрики
+    sending_queue:
+      enabled: true
+      queue_size: 5000
+    retry_on_failure:
+      enabled: true
+
+service:
+  telemetry:
+    metrics:
+      address: 0.0.0.0:8888   # self-метрики агента
+  pipelines:
+    metrics:
+      receivers: [prometheus]
+      processors: [memory_limiter, batch]
+      exporters: [otlp/gateway]

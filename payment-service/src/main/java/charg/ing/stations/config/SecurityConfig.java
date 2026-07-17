@@ -24,7 +24,7 @@ public class SecurityConfig {
                         // O!Dengi cannot send a JWT — webhook is authenticated by HMAC hash instead.
                         .pathMatchers("/api/v1/payments/callback").permitAll()
                         .pathMatchers("/swagger-ui.html", "/swagger-ui/**", "/api-docs/**", "/v3/api-docs/**", "/webjars/**").permitAll()
-                        .pathMatchers("/actuator/health", "/actuator/health/**").permitAll()
+                        .pathMatchers("/actuator/health", "/actuator/health/**", "/actuator/prometheus").permitAll()
                         // Direct balance manipulation is admin-only.
                         .pathMatchers("/api/v1/admin/**").hasRole("ADMIN")
                         .anyExchange().authenticated()

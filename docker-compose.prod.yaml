@@ -710,6 +710,24 @@ services:
       - booking-service
       - audit-log-service
 
+  # ============================ Наблюдаемость (agent) ============================
+  # Локальный OTel Collector: скрейпит /actuator/prometheus всех сервисов внутри
+  # сети и батчами шлёт метрики по OTLP в gateway на obs-VM. Сервисы сами никуда
+  # не ходят. Адрес gateway задаётся в .env: OBSERVABILITY_OTLP_ENDPOINT=<obs-vm-ip>:4317.
+  # Логи (filelog) и трейсы (otlp) добавятся в Фазах 2 и 3.
+  otel-collector-agent:
+    image: otel/opentelemetry-collector-contrib:0.104.0
+    container_name: otel-collector-agent
+    restart: unless-stopped
+    logging: *default-logging
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./observability/otel-collector-agent.yaml:/etc/otelcol/config.yaml:ro
+    environment:
+      OBSERVABILITY_OTLP_ENDPOINT: ${OBSERVABILITY_OTLP_ENDPOINT:-obs-vm:4317}
+    mem_limit: 300m
+    networks: [charging-stations-network]
+
   # ============================ Reverse proxy ============================
   nginx:
     image: nginx:1.27-alpine

@@ -29,6 +29,7 @@ public class SecurityConfig {
                                 "/v3/api-docs/**",
                                 "/webjars/**",
                                 "/actuator/health",
+                                "/actuator/prometheus",
                                 "/uploads/**"
                         ).permitAll()
                         // Read-only station endpoints — public (state-updater, websocket-service)

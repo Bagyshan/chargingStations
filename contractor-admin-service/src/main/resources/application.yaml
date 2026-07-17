@@ -40,3 +40,10 @@ services:
     url: http://localhost:8001
   user-service:
     url: http://localhost:8005
+
+# ---- Actuator: Prometheus-метрики для наблюдаемости (скрейпит OTel Collector-agent) ----
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "health,info,metrics,prometheus"

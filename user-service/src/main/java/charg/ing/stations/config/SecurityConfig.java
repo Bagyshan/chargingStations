@@ -50,7 +50,8 @@ public class SecurityConfig {
                                 "/swagger-ui/**",
                                 "/v3/api-docs/**",
                                 "/webjars/**",
-                                "/actuator/health").permitAll()
+                                "/actuator/health",
+                                "/actuator/prometheus").permitAll()
 
                         // Внутренние endpoints (service-to-service): доступ по
                         // заголовку X-Internal-Token, проверяется в контроллере.

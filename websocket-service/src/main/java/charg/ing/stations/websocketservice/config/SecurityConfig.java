@@ -15,7 +15,7 @@ public class SecurityConfig {
         return http
                 .csrf(ServerHttpSecurity.CsrfSpec::disable)
                 .authorizeExchange(exchanges -> exchanges
-                        .pathMatchers("/ws/station-events", "/swagger-ui.html", "/swagger-ui/**", "/api-docs/**", "/webjars/**").permitAll() // разрешаем без токена
+                        .pathMatchers("/ws/station-events", "/swagger-ui.html", "/swagger-ui/**", "/api-docs/**", "/webjars/**", "/actuator/health", "/actuator/prometheus").permitAll() // разрешаем без токена
                         .anyExchange().authenticated()
                 )
 //                .oauth2ResourceServer(oauth2 -> oauth2.jwt()) // если нужно для других эндпоинтов

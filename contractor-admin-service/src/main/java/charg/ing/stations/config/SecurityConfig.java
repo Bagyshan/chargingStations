@@ -26,7 +26,9 @@ public class SecurityConfig {
                                 "/swagger-ui.html",
                                 "/swagger-ui/**",
                                 "/v3/api-docs/**",
-                                "/webjars/**"
+                                "/webjars/**",
+                                "/actuator/health",
+                                "/actuator/prometheus"
                         ).permitAll()
                         .pathMatchers("/api/**").hasAnyRole("ADMIN", "SPECIALIST", "CONTRACTOR")
                         .anyExchange().authenticated()
