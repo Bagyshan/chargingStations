@@ -100,7 +100,9 @@ public class BookingEventsConsumer {
                                 .totalMinutes(event.getTotalMinutes())
                                 .startedAt(event.getStartedAt())
                                 .endedAt(event.getEndedAt())
-                                .status(event.getEventType())
+                                // Каноничный статус (ACTIVE/COMPLETED), а не тип события — иначе
+                                // аналитика (фильтр по COMPLETED) не находит завершённые брони.
+                                .status("ACTIVE")
                                 .createdAt(Instant.now())
                                 .build()
                 )))
@@ -114,7 +116,8 @@ public class BookingEventsConsumer {
                     entity.setEndedAt(event.getEndedAt());
                     entity.setTotalSum(event.getTotalSum());
                     entity.setTotalMinutes(event.getTotalMinutes());
-                    entity.setStatus(event.getEventType());
+                    // Завершённая бронь → COMPLETED (аналитика фильтрует именно по нему).
+                    entity.setStatus("COMPLETED");
                     return bookingRepository.save(entity);
                 })
                 .switchIfEmpty(Mono.defer(() -> {
@@ -129,7 +132,7 @@ public class BookingEventsConsumer {
                                     .totalMinutes(event.getTotalMinutes())
                                     .startedAt(event.getStartedAt())
                                     .endedAt(event.getEndedAt())
-                                    .status(event.getEventType())
+                                    .status("COMPLETED")
                                     .createdAt(Instant.now())
                                     .build()
                     );

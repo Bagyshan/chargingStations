@@ -18,5 +18,6 @@
     <include file="changes/0008-add-transaction-id-index.sql" relativeToChangelogFile="true"/>
     <include file="changes/0009-add-operational-columns-to-charge-box.sql" relativeToChangelogFile="true"/>
     <include file="changes/0010-add-user-columns-to-connector.sql" relativeToChangelogFile="true"/>
+    <include file="changes/0011-normalize-booking-status.sql" relativeToChangelogFile="true"/>
 
 </databaseChangeLog>
