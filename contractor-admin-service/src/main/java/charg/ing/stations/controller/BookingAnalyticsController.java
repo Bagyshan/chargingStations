@@ -76,7 +76,10 @@ public class BookingAnalyticsController {
                 .ownerIds(ownerIds)
                 .connectorIds(connectorIds)
                 .userIds(userIds)
-                .statuses(statuses != null ? statuses : List.of("COMPLETED"))
+                // Если клиент не задал статусы — НЕ фильтруем по статусу (считаем все брони периода).
+                // Раньше по умолчанию стоял только COMPLETED, и при иных статусах в мироре
+                // (ACTIVE / старые STOP_RESERVATION) аналитика приходила пустой.
+                .statuses(statuses)
                 .timeOfDayFrom(timeOfDayFrom)
                 .timeOfDayTo(timeOfDayTo)
                 .build();
