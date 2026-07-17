@@ -18,6 +18,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Segmented } from '@/components/ui/segmented';
 import { Select } from '@/components/ui/select';
+import { Input } from '@/components/ui/input';
 import { ChartTooltip } from '@/components/chart-tooltip';
 import { useBookingAnalytics, useEnergyAnalytics, useRevenueAnalytics, useStations } from '@/api/hooks';
 import { useAuth } from '@/store/auth';
@@ -26,7 +27,8 @@ import { formatDuration, formatKwh, formatNumber, formatSom, formatSomCompact } 
 import type { Granularity, GroupBy } from '@/types/domain';
 
 type Metric = 'revenue' | 'energy' | 'bookings';
-type Preset = '7' | '30' | '90' | '365';
+// 'day' — почасовой разрез за конкретный выбранный день (0–23ч).
+type Preset = '7' | '30' | '90' | '365' | 'day';
 
 const PALETTE = [
   'var(--color-primary)',
@@ -37,7 +39,7 @@ const PALETTE = [
   'oklch(0.68 0.15 200)',
 ];
 
-const PRESET_GRAN: Record<Preset, Granularity> = { '7': 'DAY', '30': 'DAY', '90': 'WEEK', '365': 'MONTH' };
+const PRESET_GRAN: Record<Preset, Granularity> = { '7': 'DAY', '30': 'DAY', '90': 'WEEK', '365': 'MONTH', day: 'HOUR' };
 
 export function AnalyticsPage() {
   const role = useAuth((s) => s.account?.role ?? 'USER');
@@ -46,9 +48,27 @@ export function AnalyticsPage() {
   const [granularity, setGranularity] = useState<Granularity>('DAY');
   const [groupBy, setGroupBy] = useState<GroupBy>('TOTAL');
   const [stationId, setStationId] = useState('');
+  // Локальная дата (YYYY-MM-DD) для режима «День». По умолчанию — сегодня.
+  const todayStr = new Date().toLocaleDateString('en-CA');
+  const [day, setDay] = useState(todayStr);
   const stations = useStations();
 
+  // В режиме «День» гранулярность всегда почасовая, что бы ни стояло в селекте.
+  const gran: Granularity = preset === 'day' ? 'HOUR' : granularity;
+
   const opts = useMemo(() => {
+    if (preset === 'day') {
+      // Границы выбранного дня в локальном времени: [00:00; +24ч).
+      const from = new Date(`${day}T00:00:00`);
+      const to = new Date(from.getTime() + 86_400_000);
+      return {
+        from: from.toISOString(),
+        to: to.toISOString(),
+        granularity: 'HOUR' as Granularity,
+        groupBy,
+        stationIds: stationId ? [stationId] : undefined,
+      };
+    }
     const to = new Date();
     to.setMinutes(0, 0, 0);
     const from = new Date(to.getTime() - Number(preset) * 86_400_000);
@@ -59,7 +79,7 @@ export function AnalyticsPage() {
       groupBy,
       stationIds: stationId ? [stationId] : undefined,
     };
-  }, [preset, granularity, groupBy, stationId]);
+  }, [preset, day, granularity, groupBy, stationId]);
 
   const revenue = useRevenueAnalytics(opts);
   const energy = useEnergyAnalytics(opts);
@@ -67,40 +87,63 @@ export function AnalyticsPage() {
 
   const loading = revenue.isLoading || energy.isLoading || bookings.isLoading;
 
-  const tickFmt = (iso: string) =>
-    new Date(iso).toLocaleDateString('ru-RU',
-      granularity === 'MONTH' || granularity === 'YEAR'
+  const tickFmt = (iso: string) => {
+    const d = new Date(iso);
+    if (gran === 'HOUR') return d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+    return d.toLocaleDateString('ru-RU',
+      gran === 'MONTH' || gran === 'YEAR'
         ? { month: 'short', year: '2-digit' }
         : { day: '2-digit', month: 'short' });
+  };
 
-  // Слияние серий в строки графика по периодам.
+  // Слияние серий в строки графика по периодам (ключ — эпоха, чтобы не зависеть
+  // от формата ISO бэкенда: "…:00:00Z" vs "…:00:00.000Z").
   const chartRows = useMemo(() => {
     const src =
       metric === 'revenue' ? revenue.data : metric === 'energy' ? energy.data : bookings.data;
     if (!src) return [];
+    const stacked = metric === 'revenue' && groupBy === 'TOTAL';
+    const labels = src.series.map((s) => s.label);
     const value = (p: unknown): number => {
       const point = p as Record<string, number>;
       if (metric === 'revenue') return point.totalRevenue;
       if (metric === 'energy') return point.energyKwh;
       return point.bookings;
     };
-    const map = new Map<string, Record<string, number | string>>();
+    const map = new Map<number, Record<string, number | string>>();
+
+    // Режим «День»: заранее раскладываем все 24 часовых слота нулями, чтобы
+    // график был ровным на сутки, а пустые часы показывались нулём, а не разрывом.
+    if (preset === 'day') {
+      const dayStart = new Date(`${day}T00:00:00`).getTime();
+      for (let h = 0; h < 24; h++) {
+        const epoch = dayStart + h * 3_600_000;
+        const row: Record<string, number | string> = { periodStart: new Date(epoch).toISOString() };
+        for (const l of labels) row[l] = 0;
+        if (stacked) {
+          row['Зарядки'] = 0;
+          row['Брони'] = 0;
+        }
+        map.set(epoch, row);
+      }
+    }
+
     for (const s of src.series)
       for (const p of s.points) {
-        const row = map.get(p.periodStart) ?? { periodStart: p.periodStart };
+        const epoch = +new Date(p.periodStart);
+        const row = map.get(epoch) ?? { periodStart: p.periodStart };
         row[s.label] = value(p);
         // для стека выручки (TOTAL)
-        if (metric === 'revenue' && groupBy === 'TOTAL') {
-          const rp = p as { chargingRevenue: number; bookingRevenue: number };
+        if (stacked) {
+          const rp = p as unknown as { chargingRevenue: number; bookingRevenue: number };
           row['Зарядки'] = rp.chargingRevenue;
           row['Брони'] = rp.bookingRevenue;
         }
-        map.set(p.periodStart, row);
+        map.set(epoch, row);
       }
-    return [...map.values()].sort(
-      (a, b) => +new Date(a.periodStart as string) - +new Date(b.periodStart as string),
-    );
-  }, [metric, groupBy, revenue.data, energy.data, bookings.data]);
+
+    return [...map.entries()].sort((a, b) => a[0] - b[0]).map(([, row]) => row);
+  }, [metric, groupBy, preset, day, revenue.data, energy.data, bookings.data]);
 
   const seriesLabels =
     (metric === 'revenue' ? revenue.data : metric === 'energy' ? energy.data : bookings.data)?.series.map(
@@ -120,7 +163,8 @@ export function AnalyticsPage() {
         ? [Number(r['Зарядки'] ?? 0), Number(r['Брони'] ?? 0)]
         : seriesLabels.map((l) => Number(r[l] ?? 0))),
     ]);
-    downloadCsv(`batenergy-${metric}-${preset}d.csv`, headers, rows);
+    const suffix = preset === 'day' ? day : `${preset}d`;
+    downloadCsv(`batenergy-${metric}-${suffix}.csv`, headers, rows);
   };
 
   return (
@@ -152,14 +196,26 @@ export function AnalyticsPage() {
                 { value: '30', label: '30 дней' },
                 { value: '90', label: '90 дней' },
                 { value: '365', label: '12 мес' },
+                { value: 'day', label: 'День' },
               ]}
             />
-            <Select value={granularity} onChange={(e) => setGranularity(e.target.value as Granularity)} className="w-32">
-              <option value="HOUR">По часам</option>
-              <option value="DAY">По дням</option>
-              <option value="WEEK">По неделям</option>
-              <option value="MONTH">По месяцам</option>
-            </Select>
+            {preset === 'day' ? (
+              <Input
+                type="date"
+                value={day}
+                max={todayStr}
+                onChange={(e) => setDay(e.target.value)}
+                className="w-40"
+                aria-label="Выберите день для почасовой аналитики"
+              />
+            ) : (
+              <Select value={granularity} onChange={(e) => setGranularity(e.target.value as Granularity)} className="w-32">
+                <option value="HOUR">По часам</option>
+                <option value="DAY">По дням</option>
+                <option value="WEEK">По неделям</option>
+                <option value="MONTH">По месяцам</option>
+              </Select>
+            )}
             <Select value={groupBy} onChange={(e) => setGroupBy(e.target.value as GroupBy)} className="w-40">
               <option value="TOTAL">Всего</option>
               <option value="STATION">По станциям</option>
