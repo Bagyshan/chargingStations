@@ -1,0 +1,57 @@
+# ============================================================================
+# Grafana datasources (auto-provisioning) — обсервабилити-VM
+# ----------------------------------------------------------------------------
+# Единая панель: метрики (Prometheus) + трейсы (Tempo) + логи (Elasticsearch).
+# Настроена корреляция trace <-> log по trace_id, чтобы прыгать из трейса
+# в его логи и обратно.
+# ============================================================================
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    uid: prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    jsonData:
+      httpMethod: POST
+      exemplarTraceIdDestinations:
+        - name: trace_id
+          datasourceUid: tempo
+
+  - name: Tempo
+    uid: tempo
+    type: tempo
+    access: proxy
+    url: http://tempo:3200
+    jsonData:
+      # Из спана трейса -> в логи ES по trace_id
+      tracesToLogsV2:
+        datasourceUid: elasticsearch
+        filterByTraceID: true
+        filterBySpanID: false
+        tags:
+          - key: service.name
+            value: service
+      # Из трейса -> в метрики Prometheus (RED из span-metrics)
+      tracesToMetrics:
+        datasourceUid: prometheus
+      serviceMap:
+        datasourceUid: prometheus
+      nodeGraph:
+        enabled: true
+
+  - name: Elasticsearch
+    uid: elasticsearch
+    type: elasticsearch
+    access: proxy
+    url: http://elasticsearch:9200
+    jsonData:
+      index: logs-charging
+      timeField: '@timestamp'
+      # Клик по trace_id в логе -> открыть трейс в Tempo
+      dataLinks:
+        - field: trace_id
+          datasourceUid: tempo
+          url: '$${__value.raw}'

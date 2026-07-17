@@ -1,0 +1,81 @@
+# ============================================================================
+# OpenTelemetry Collector — GATEWAY (обсервабилити-VM)
+# ----------------------------------------------------------------------------
+# Единая точка приёма всех трёх столпов по OTLP от прод-хоста (его локальный
+# collector-agent шлёт сюда) и фан-аут по бэкендам:
+#   traces  -> Tempo
+#   metrics -> Prometheus (remote-write)
+#   logs    -> Elasticsearch (ECS-маппинг, читается Kibana/Grafana)
+#
+# Прод-хост открывает наружу ТОЛЬКО этот адрес :4317 (gRPC) / :4318 (HTTP).
+# Всё остальное (Tempo/Prometheus/ES) остаётся внутри сети обсервабилити-VM.
+# ============================================================================
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  # Страховка по памяти: если Collector упрётся в лимит — начнёт отбрасывать,
+  # а не падать по OOM. Работает вместе с mem_limit контейнера в compose.
+  memory_limiter:
+    check_interval: 2s
+    limit_percentage: 75
+    spike_limit_percentage: 20
+  # Батчинг на выходе — меньше запросов к бэкендам.
+  batch:
+    send_batch_size: 1024
+    send_batch_max_size: 2048
+    timeout: 5s
+
+exporters:
+  # --- Трейсы -> Tempo (OTLP gRPC, внутри сети без TLS) ---
+  otlp/tempo:
+    endpoint: tempo:4317
+    tls:
+      insecure: true
+
+  # --- Метрики -> Prometheus (remote-write receiver включён флагом в compose) ---
+  prometheusremotewrite:
+    endpoint: http://prometheus:9090/api/v1/write
+    resource_to_telemetry_conversion:
+      enabled: true   # ресурсные атрибуты (service.name и т.п.) -> лейблы метрик
+
+  # --- Логи -> Elasticsearch, ECS-маппинг (совместимо с Kibana/audit-стилем) ---
+  elasticsearch:
+    endpoints: [http://elasticsearch:9200]
+    logs_index: logs-charging
+    mapping:
+      mode: ecs
+    retry:
+      enabled: true
+      max_requests: 5
+    sending_queue:
+      enabled: true
+      queue_size: 5000
+
+  # Диагностика в stdout Collector'а (basic = только счётчики).
+  debug:
+    verbosity: basic
+
+service:
+  telemetry:
+    metrics:
+      address: 0.0.0.0:8888   # self-метрики Collector'а (скрейпит Prometheus)
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [otlp/tempo]
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [prometheusremotewrite]
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [elasticsearch]

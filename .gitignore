@@ -49,3 +49,6 @@ build/
 /CLAUDE.md
 /tasks_chargingStations.txt
 /Инструкция Sandbox (6) (2).pdf
+
+# OTel Java agent (скачивается download-otel-agent.sh)
+observability/agent/
