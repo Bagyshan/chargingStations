@@ -21,6 +21,7 @@
     <module>contractor-admin-service</module>
     <module>websocket-service</module>
     <module>api-gateway-service</module>
+    <module>audit-log-service</module>
   </modules>
 
   <properties>

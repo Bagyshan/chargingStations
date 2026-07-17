@@ -1,5 +1,6 @@
 package charg.ing.stations.consumer;
 
+import charg.ing.stations.audit.AuditEventPublisher;
 import charg.ing.stations.dto.event.ChargingStatusEvent;
 import charg.ing.stations.dto.event.StationAlertEvent;
 import charg.ing.stations.entity.ChargeBoxEntity;
@@ -22,7 +23,9 @@ import org.springframework.kafka.support.Acknowledgment;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
+import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 
 /**
@@ -51,6 +54,7 @@ public class ConnectorStatusConsumer {
     private final ChargingStatusProducer chargingStatusProducer;
     private final StationAlertProducer stationAlertProducer;
     private final StationConnectivityService connectivityService;
+    private final AuditEventPublisher auditPublisher;
 
     @KafkaListener(topics = "station.status", groupId = "station-controller-service-group-status")
     public void onConnectorStatus(Map<String, Object> message, Acknowledgment ack) {
@@ -79,6 +83,22 @@ public class ConnectorStatusConsumer {
 
             // 1. Держим operational-статус коннектора живым (короткая транзакция).
             connectorService.updateOperationalStatus(chargeBoxId, connectorId, status);
+
+            // Аудит: пишем только реальную смену статуса коннектора (в т.ч. неисправность).
+            if (!Objects.equals(oldStatus, status)) {
+                boolean fault = isOutOfOrder(status);
+                Map<String, Object> payload = new HashMap<>();
+                payload.put("from", oldStatus);
+                payload.put("to", status);
+                if (errorCode != null) {
+                    payload.put("errorCode", errorCode);
+                }
+                auditPublisher.publishConnector(fault ? "FAULT" : "STATUS_CHANGE", chargeBoxId, connectorId,
+                        fault ? "WARN" : "INFO",
+                        "Connector " + chargeBoxId + ":" + connectorId + " "
+                                + (oldStatus != null ? oldStatus + " -> " : "") + status,
+                        payload);
+            }
 
             // 2. Реагируем только на ПЕРЕХОД в неисправное состояние.
             if (isOutOfOrder(status) && !isOutOfOrder(oldStatus)) {

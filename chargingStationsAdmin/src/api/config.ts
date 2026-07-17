@@ -17,4 +17,5 @@ export const SERVICE = {
   payment: '/payment',
   booking: '/booking',
   stateUpdater: '/state-updater',
+  audit: '/audit',
 } as const;

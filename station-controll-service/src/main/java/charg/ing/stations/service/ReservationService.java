@@ -1,12 +1,16 @@
 package charg.ing.stations.service;
 
 
+import charg.ing.stations.audit.AuditEventPublisher;
 import charg.ing.stations.dto.event.BookingEventMessage;
 import charg.ing.stations.entity.ChargeBoxEntity;
 import charg.ing.stations.entity.ConnectorEntity;
 import charg.ing.stations.enums.ConnectorStatus;
 import charg.ing.stations.repository.ChargeBoxRepository;
 import charg.ing.stations.repository.ConnectorRepository;
+
+import java.util.HashMap;
+import java.util.Map;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityManagerFactory;
 import lombok.RequiredArgsConstructor;
@@ -27,16 +31,19 @@ public class ReservationService {
     private final ConnectorRepository connectorRepository;
     private final ChargeBoxRepository chargeBoxRepository;
     private final StationStateService stationStateService;
+    private final AuditEventPublisher auditPublisher;
 
     @Autowired
     public ReservationService(
             ConnectorRepository connectorRepository,
             ChargeBoxRepository chargeBoxRepository,
-            StationStateService stationStateService
+            StationStateService stationStateService,
+            AuditEventPublisher auditPublisher
     ) {
         this.connectorRepository = connectorRepository;
         this.chargeBoxRepository = chargeBoxRepository;
         this.stationStateService = stationStateService;
+        this.auditPublisher = auditPublisher;
     }
 
     @Transactional(isolation = Isolation.READ_COMMITTED, propagation = Propagation.REQUIRED)
@@ -89,6 +96,12 @@ public class ReservationService {
             throw new IllegalArgumentException("Unsupported event type: " + event.getEventType());
         }
 
+        // Снимок для аудита реакции коннектора на бронь (значения до мутации).
+        final String oldStatus = connector.getStatus();
+        final String finalNewStatus = newStatus;
+        final boolean isStart = event.getEventType() == BookingEventMessage.EventType.START_RESERVATION;
+        final String actorUserId = event.getUserId() != null ? event.getUserId().toString() : null;
+
         // Обновляем поля и увеличиваем версии
         connector.setStatus(newStatus);
         connector.setBookingUserId(bookingUserId);
@@ -114,6 +127,17 @@ public class ReservationService {
             public void afterCommit() {
                 ack.acknowledge();
                 log.info("Reservation event processed and acknowledged: {}", event.getEventType());
+
+                // Аудит: реакция коннектора на бронь (только после успешного коммита).
+                Map<String, Object> payload = new HashMap<>();
+                payload.put("from", oldStatus);
+                payload.put("to", finalNewStatus);
+                payload.put("bookingUserId", isStart ? actorUserId : null);
+                auditPublisher.publishConnector(isStart ? "RESERVED" : "RESERVATION_RELEASED",
+                        chargeBoxId, connectorId, "INFO",
+                        "Connector " + chargeBoxId + ":" + connectorId
+                                + (isStart ? " reserved by " + actorUserId : " reservation released"),
+                        payload);
             }
         });
     }

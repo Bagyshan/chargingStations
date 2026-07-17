@@ -16,6 +16,7 @@ import { ConnectorTypesPage } from '@/features/connector-types/connector-types-p
 import { BookingsPage } from '@/features/bookings/bookings-page';
 import { TransactionsPage } from '@/features/transactions/transactions-page';
 import { UsersPage } from '@/features/users/users-page';
+import { AuditPage } from '@/features/audit/audit-page';
 import { SettingsPage } from '@/features/settings/settings-page';
 import { useAuth } from '@/store/auth';
 
@@ -54,6 +55,7 @@ const routeTree = rootRoute.addChildren([
     createRoute({ getParentRoute: p, path: '/bookings', component: BookingsPage }),
     createRoute({ getParentRoute: p, path: '/transactions', component: TransactionsPage }),
     createRoute({ getParentRoute: p, path: '/users', component: UsersPage }),
+    createRoute({ getParentRoute: p, path: '/audit', component: AuditPage }),
     createRoute({ getParentRoute: p, path: '/settings', component: SettingsPage }),
   ]),
 ]);

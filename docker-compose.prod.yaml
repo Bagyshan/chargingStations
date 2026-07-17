@@ -215,6 +215,31 @@ services:
       kafka:
         condition: service_healthy
 
+  # ============================ Elasticsearch (журнал аудита) ============================
+  # Хранилище audit-log-service. Наружу порт не открываем — доступ только из сети.
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.13.4
+    container_name: elasticsearch
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      # Heap под аудит-логи. На тесном сервере можно снизить; при росте объёма — поднять.
+      ES_JAVA_OPTS: "-Xms512m -Xmx512m"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - es-data:/usr/share/elasticsearch/data
+    networks: [charging-stations-network]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
   # Создаёт все топики один раз. Список синхронизирован с docker-compose.local.yaml.
   kafka-init:
     image: confluentinc/cp-kafka:7.5.0
@@ -245,7 +270,8 @@ services:
       kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic transaction.events --partitions 16 --replication-factor 1 --config cleanup.policy=delete --config min.insync.replicas=1 --config retention.ms=86400000 --config retention.bytes=1073741824 --config max.message.bytes=1048576 &&
       kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic charging.user.status --partitions 16 --replication-factor 1 --config cleanup.policy=delete --config min.insync.replicas=1 --config retention.ms=86400000 --config retention.bytes=1073741824 --config max.message.bytes=1048576 &&
       kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic station.hourly.tariffs --partitions 1 --replication-factor 1 --config cleanup.policy=delete --config min.insync.replicas=1 --config retention.ms=86400000 --config retention.bytes=1073741824 --config max.message.bytes=1048576 &&
-      kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic payment.topup.events --partitions 4 --replication-factor 1 --config cleanup.policy=delete --config min.insync.replicas=1 --config retention.ms=86400000 --config retention.bytes=1073741824 --config max.message.bytes=1048576
+      kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic payment.topup.events --partitions 4 --replication-factor 1 --config cleanup.policy=delete --config min.insync.replicas=1 --config retention.ms=86400000 --config retention.bytes=1073741824 --config max.message.bytes=1048576 &&
+      kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic audit.events --partitions 8 --replication-factor 1 --config cleanup.policy=delete --config min.insync.replicas=1 --config retention.ms=604800000 --config retention.bytes=1073741824 --config max.message.bytes=1048576
       "
 
   consul-server:
@@ -600,6 +626,29 @@ services:
       keycloak:
         condition: service_started
 
+  audit-log-service:
+    build:
+      context: .
+      dockerfile: Dockerfile-services
+      args:
+        JAR_FILE: audit-log-service/target/audit-log-service-1.0-SNAPSHOT-exec.jar
+    container_name: audit-log-service
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      <<: *java-opts
+      SPRING_ELASTICSEARCH_URIS: http://elasticsearch:9200
+      SPRING_KAFKA_BOOTSTRAPSERVERS: kafka:9092
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWKSETURI: http://keycloak:8080/realms/charging-stations/protocol/openid-connect/certs
+    networks: [charging-stations-network]
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      keycloak:
+        condition: service_started
+
   api-gateway-service:
     build:
       context: .
@@ -619,6 +668,7 @@ services:
       USER_URI: http://user-service:8005
       PAYMENT_URI: http://payment-service:8007
       BOOKING_URI: http://booking-service:8008
+      AUDIT_URI: http://audit-log-service:8009
     networks: [charging-stations-network]
     depends_on:
       - station-controll-service
@@ -629,6 +679,7 @@ services:
       - user-service
       - payment-service
       - booking-service
+      - audit-log-service
 
   # ============================ Reverse proxy ============================
   nginx:
@@ -663,6 +714,7 @@ volumes:
   contractor-db-data:
   mariadb_data:
   redis-data:
+  es-data:
   # Загруженные иконки типов коннекторов и прочая станционная статика.
   # Без тома файлы живут в эфемерной ФС контейнера и теряются при редеплое.
   station-controll-uploads:

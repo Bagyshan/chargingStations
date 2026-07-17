@@ -1,0 +1,41 @@
+spring:
+  application:
+    name: audit-log-service
+
+  elasticsearch:
+    uris: http://localhost:9200
+    # username/password не задаём — в локальной сети ES с выключенным xpack.security.
+    socket-timeout: 10s
+    connection-timeout: 5s
+
+  kafka:
+    bootstrap-servers: localhost:29092
+
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          jwk-set-uri: http://localhost:8080/realms/charging-stations/protocol/openid-connect/certs
+
+# Настройки журнала аудита (топик-приёмник + индекс ES). Переопределяются env-переменными на проде.
+audit:
+  kafka:
+    topic: audit.events
+    group-id: audit-log-service
+  elasticsearch:
+    index: audit-events
+  retention:
+    # Сколько хранить события журнала. 0 или меньше — retention выключен.
+    days: 180
+    # Когда запускать чистку (Spring cron). По умолчанию ежедневно в 03:00.
+    cron: "0 0 3 * * *"
+
+logging:
+  level:
+    root: INFO
+    charg.ing.stations: INFO
+    org.apache.kafka: INFO
+    org.springframework.data.elasticsearch.client.WIRE: INFO
+
+server:
+  port: 8009

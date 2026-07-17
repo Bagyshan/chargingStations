@@ -1,6 +1,7 @@
 package charg.ing.stations.consumer;
 
 
+import charg.ing.stations.audit.AuditEventPublisher;
 import charg.ing.stations.dto.availability.AvailabilityResult;
 import charg.ing.stations.dto.kafka.StationRequest;
 import charg.ing.stations.dto.kafka.StationResponse;
@@ -15,6 +16,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -27,6 +29,7 @@ public class BookingRequestConsumer {
     private final ChargeBoxRepository chargeBoxRepository;
     private final StationAvailabilityService availabilityService;
     private final KafkaTemplate<String, Object> kafkaTemplate;
+    private final AuditEventPublisher auditPublisher;
 
     @KafkaListener(topics = "booking.station.requests", groupId = "station-controller-service-group")
     @Transactional
@@ -54,6 +57,13 @@ public class BookingRequestConsumer {
             log.info("Station {} connector {} not bookable: {} ({})",
                     request.getStationId(), request.getConnectorId(),
                     availability.reason(), availability.message());
+            // Аудит: charge box/коннектор отклонил бронь.
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("reason", availability.reason() != null ? availability.reason().name() : null);
+            payload.put("message", availability.message());
+            auditPublisher.publishConnector("BOOKING_DENIED", request.getStationId(), request.getConnectorId(),
+                    "WARN", "Booking denied for " + request.getStationId() + ":" + request.getConnectorId()
+                            + " — " + availability.message(), payload);
             sendErrorResponse(request, availability.message());
             return;
         }

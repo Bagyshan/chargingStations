@@ -5,6 +5,7 @@ import charg.ing.stations.dto.StationDTO;
 import charg.ing.stations.dto.StationPatchDTO;
 import charg.ing.stations.dto.TransactionRequestDTO;
 import charg.ing.stations.dto.TransactionResponseDTO;
+import charg.ing.stations.audit.AuditEventPublisher;
 import charg.ing.stations.dto.availability.AvailabilityResult;
 import charg.ing.stations.dto.request.ServiceStatusRequest;
 import charg.ing.stations.service.OcppRequestReplyService;
@@ -41,6 +42,7 @@ public class StationController {
     private final OcppRequestReplyService ocppRequestReplyService;
     private final ObjectMapper objectMapper;
     private final StationAvailabilityService availabilityService;
+    private final AuditEventPublisher auditPublisher;
 
     /**
      * Получить все станции
@@ -91,11 +93,16 @@ public class StationController {
     @PatchMapping("/{chargeBoxId}/service-status")
     public ResponseEntity<StationDTO> updateServiceStatus(
             @PathVariable String chargeBoxId,
-            @RequestBody ServiceStatusRequest request
+            @RequestBody ServiceStatusRequest request,
+            @AuthenticationPrincipal Jwt jwt
     ) {
-        return ResponseEntity.ok(
-                stationService.updateServiceStatus(chargeBoxId, request.getServiceStatus())
-        );
+        StationDTO updated = stationService.updateServiceStatus(chargeBoxId, request.getServiceStatus());
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("serviceStatus", String.valueOf(request.getServiceStatus()));
+        auditPublisher.publishChargeBox("SERVICE_STATUS_CHANGE", chargeBoxId,
+                jwt != null ? jwt.getSubject() : null, "INFO",
+                "Service status -> " + request.getServiceStatus(), payload);
+        return ResponseEntity.ok(updated);
     }
 
 
@@ -139,6 +146,11 @@ public class StationController {
 
                                 // Вызываем существующий метод сохранения
                                 transactionService.saveStartTransactionAndAck(response, noopAck);
+
+                                Map<String, Object> auditPayload = new HashMap<>();
+                                auditPayload.put("connectorId", request.getConnectorId());
+                                auditPublisher.publishChargeBox("REMOTE_START", request.getChargeBoxId(), userId,
+                                        "INFO", "Remote start requested by user", auditPayload);
 
                                 return Mono.just(ResponseEntity.ok(response));
                             });
@@ -216,6 +228,11 @@ public class StationController {
                                 org.springframework.kafka.support.Acknowledgment noopAck = () -> {};
 
                                 transactionService.updateStopTransactionAndAck(response, noopAck);
+
+                                Map<String, Object> auditPayload = new HashMap<>();
+                                auditPayload.put("connectorId", request.getConnectorId());
+                                auditPublisher.publishChargeBox("REMOTE_STOP", request.getChargeBoxId(), userId,
+                                        "INFO", "Remote stop requested by user", auditPayload);
 
                                 return Mono.just(ResponseEntity.ok(response));
                             });

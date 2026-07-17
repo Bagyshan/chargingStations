@@ -1,5 +1,7 @@
 package charg.ing.stations.consumer;
 
+import charg.ing.stations.audit.AuditEvent;
+import charg.ing.stations.audit.AuditEventPublisher;
 import charg.ing.stations.dto.event.ChargingStatusEvent;
 import charg.ing.stations.dto.meter.MeterValueMessage;
 import charg.ing.stations.dto.meter.PayloadItem;
@@ -13,16 +15,20 @@ import charg.ing.stations.service.StationConnectivityService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.support.Acknowledgment;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.Duration;
 import java.time.Instant;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Enforces the prepaid kWh budget while charging: tracks the cumulative energy register from
@@ -42,6 +48,14 @@ public class MeterValueChargingConsumer {
     private final ChargingStatusProducer chargingStatusProducer;
     private final ChargingStopService chargingStopService;
     private final StationConnectivityService connectivityService;
+    private final AuditEventPublisher auditPublisher;
+
+    /** Как часто писать meter-значение в аудит на одну сессию. {@code <= 0} — не писать вовсе. */
+    @Value("${audit.meter-values.interval-seconds:60}")
+    private long meterAuditIntervalSeconds;
+
+    /** Троттлинг аудита meter-значений по transactionId (поток слишком частый для «каждого»). */
+    private final Map<String, Instant> lastMeterAudit = new ConcurrentHashMap<>();
 
     @KafkaListener(topics = "station.meter.values", groupId = "station-controller-service-group-meter")
     public void onMeterValue(Map<String, Object> value, Acknowledgment ack) {
@@ -67,6 +81,9 @@ public class MeterValueChargingConsumer {
 
             // 1. Push live status to the initiating user (every meter value of an active session).
             publishStatus(tx, registerWh, soc);
+
+            // 1b. Аудит meter-значений (с троттлингом — иначе поток затопил бы журнал).
+            auditMeterValue(tx, registerWh, soc);
 
             // 2. Enforce the prepaid kWh budget (auto-stop) when an energy register is present.
             if (registerWh != null && tx.getMaxKwQuantity() != null) {
@@ -108,6 +125,46 @@ public class MeterValueChargingConsumer {
                 .soc(soc)
                 .status(tx.getStatus() != null ? tx.getStatus().name() : null)
                 .timestamp(Instant.now())
+                .build());
+    }
+
+    /** Пишет meter-значение сессии в аудит не чаще, чем раз в {@code meterAuditIntervalSeconds}. */
+    private void auditMeterValue(TransactionEntity tx, Double registerWh, Double soc) {
+        if (meterAuditIntervalSeconds <= 0) {
+            return; // аудит meter-значений выключен
+        }
+        String txKey = String.valueOf(tx.getTransactionId());
+        Instant now = Instant.now();
+        Instant last = lastMeterAudit.get(txKey);
+        if (last != null && Duration.between(last, now).getSeconds() < meterAuditIntervalSeconds) {
+            return; // слишком часто — пропускаем
+        }
+        // Грубая защита от утечки памяти на долгоживущем процессе.
+        if (lastMeterAudit.size() > 10_000) {
+            lastMeterAudit.clear();
+        }
+        lastMeterAudit.put(txKey, now);
+
+        Map<String, Object> payload = new HashMap<>();
+        if (registerWh != null) {
+            int startValue = tx.getStartValue() != null ? tx.getStartValue() : 0;
+            double consumedWh = Math.max(0, registerWh - startValue);
+            payload.put("energyKwh", BigDecimal.valueOf(consumedWh / 1000.0).setScale(3, RoundingMode.HALF_UP));
+            payload.put("registerWh", registerWh);
+        }
+        if (soc != null) {
+            payload.put("soc", soc);
+        }
+        payload.put("transactionId", tx.getTransactionId());
+
+        auditPublisher.publish(AuditEvent.builder()
+                .eventType("CONNECTOR")
+                .action("METER_VALUES")
+                .userId(tx.getUserId())
+                .entityId(tx.getChargeBoxId() + ":" + tx.getConnectorId())
+                .severity("INFO")
+                .message("Meter values " + tx.getChargeBoxId() + ":" + tx.getConnectorId())
+                .payload(payload)
                 .build());
     }
 

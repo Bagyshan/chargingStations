@@ -1,5 +1,6 @@
 package charg.ing.stations.service;
 
+import charg.ing.stations.audit.AuditEventPublisher;
 import charg.ing.stations.event.UserEvent;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -25,8 +26,11 @@ public class KafkaEventProducer {
 
     private final KafkaTemplate<String, String> kafkaTemplate;
     private final ObjectMapper objectMapper;
+    private final AuditEventPublisher auditEventPublisher;
 
     public Mono<Void> sendUserEvent(UserEvent event) {
+        // Зеркалим каждое пользовательское событие в журнал аудита (audit.events).
+        auditEventPublisher.publishUserEvent(event);
         return Mono.fromFuture(CompletableFuture.runAsync(() -> {
             try {
                 String eventJson = objectMapper.writeValueAsString(event);
@@ -50,6 +54,8 @@ public class KafkaEventProducer {
 
 
     public Mono<Void> sendNotificationEvent(UserEvent event) {
+        // Событие-уведомление (email-verify / password-reset requested) тоже пишем в аудит.
+        auditEventPublisher.publishUserEvent(event);
         return Mono.create(sink -> {
             try {
                 String key = event.getUserEmail();

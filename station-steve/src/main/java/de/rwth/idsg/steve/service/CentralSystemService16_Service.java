@@ -61,6 +61,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -78,6 +80,7 @@ public class CentralSystemService16_Service {
     @Autowired private ApplicationEventPublisher applicationEventPublisher;
     @Autowired private ChargePointHelperService chargePointHelperService;
     @Autowired private de.rwth.idsg.steve.ocpp.ws.ocpp16.producer.StationEventProducer stationEventProducer;
+    @Autowired private de.rwth.idsg.steve.audit.AuditEventPublisher auditPublisher;
 
     public BootNotificationResponse bootNotification(BootNotificationRequest parameters, String chargeBoxIdentity,
                                                      OcppProtocol ocppProtocol) {
@@ -110,6 +113,22 @@ public class CentralSystemService16_Service {
 
             ocppServerRepository.updateChargebox(params);
         }
+
+        // Аудит: станция загрузилась/переподключилась (OCPP BootNotification) с прошивкой/вендором.
+        Map<String, Object> auditPayload = new HashMap<>();
+        auditPayload.put("vendor", parameters.getChargePointVendor());
+        auditPayload.put("model", parameters.getChargePointModel());
+        auditPayload.put("firmwareVersion", parameters.getFirmwareVersion());
+        auditPayload.put("chargePointSerialNumber", parameters.getChargePointSerialNumber());
+        auditPayload.put("chargeBoxSerialNumber", parameters.getChargeBoxSerialNumber());
+        auditPayload.put("iccid", parameters.getIccid());
+        auditPayload.put("imsi", parameters.getImsi());
+        auditPayload.put("meterType", parameters.getMeterType());
+        auditPayload.put("registrationStatus", status.map(s -> s.name()).orElse("NOT_REGISTERED"));
+        auditPayload.put("ocppProtocol", String.valueOf(ocppProtocol));
+        auditPublisher.publishChargeBox("BOOT_NOTIFICATION", chargeBoxIdentity,
+                status.isEmpty() ? "WARN" : "INFO",
+                "BootNotification from " + chargeBoxIdentity, auditPayload);
 
         return new BootNotificationResponse()
                 .withStatus(status.orElse(RegistrationStatus.REJECTED))

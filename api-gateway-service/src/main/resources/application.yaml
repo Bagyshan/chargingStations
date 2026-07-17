@@ -67,6 +67,13 @@ spring:
           filters:
             - StripPrefix=1
 
+        - id: audit-log-service
+          uri: ${AUDIT_URI:http://localhost:8009}
+          predicates:
+            - Path=/audit/**
+          filters:
+            - StripPrefix=1
+
 # Агрегированная документация. Дропдаун в Swagger UI шлюза перечисляет api-docs всех сервисов,
 # проксируемые через сам шлюз (тот же origin, поэтому без CORS-проблем).
 # booking-service и websocket-service отдают api-docs на /api-docs, остальные — на /v3/api-docs.
@@ -92,6 +99,8 @@ springdoc:
         url: /booking/api-docs
       - name: websocket-service
         url: /websocket/api-docs
+      - name: audit-log-service
+        url: /audit/v3/api-docs
 
 management:
   endpoints:

@@ -1,5 +1,6 @@
 package charg.ing.stations.service;
 
+import charg.ing.stations.audit.AuditEventPublisher;
 import charg.ing.stations.entity.ChargeBoxEntity;
 import charg.ing.stations.repository.ChargeBoxRepository;
 import lombok.RequiredArgsConstructor;
@@ -11,7 +12,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Offline-детект станций. Признак online ведётся по двум источникам:
@@ -37,6 +40,7 @@ public class StationConnectivityService {
 
     private final ChargeBoxRepository chargeBoxRepository;
     private final StationStateService stationStateService;
+    private final AuditEventPublisher auditPublisher;
 
     /**
      * Окно тишины, после которого свип гасит online. Должно превышать интервал OCPP-heartbeat
@@ -87,6 +91,13 @@ public class StationConnectivityService {
 
         chargeBoxRepository.updateConnectivityAndBumpVersion(chargeBoxId, online, seenAt);
         publishSnapshot(chargeBoxId, online ? "ONLINE" : "OFFLINE", reason);
+
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("online", online);
+        payload.put("reason", reason);
+        auditPublisher.publishChargeBox(online ? "CONNECTED" : "DISCONNECTED", chargeBoxId, null,
+                online ? "INFO" : "WARN",
+                "Station " + chargeBoxId + (online ? " online" : " offline") + " (" + reason + ")", payload);
     }
 
     /** Свип: гасит online у станций, от которых не было сигнала дольше порога. */
@@ -98,6 +109,11 @@ public class StationConnectivityService {
         for (String chargeBoxId : stale) {
             chargeBoxRepository.markOfflineAndBumpVersion(chargeBoxId);
             publishSnapshot(chargeBoxId, "OFFLINE", "sweep");
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("online", false);
+            payload.put("reason", "sweep");
+            auditPublisher.publishChargeBox("DISCONNECTED", chargeBoxId, null, "WARN",
+                    "Station " + chargeBoxId + " offline (sweep timeout)", payload);
         }
         if (!stale.isEmpty()) {
             log.warn("Offline sweep: marked {} station(s) offline (no signal since {})", stale.size(), threshold);

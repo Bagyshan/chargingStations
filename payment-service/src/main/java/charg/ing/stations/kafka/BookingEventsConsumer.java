@@ -1,5 +1,6 @@
 package charg.ing.stations.kafka;
 
+import charg.ing.stations.audit.AuditEventPublisher;
 import charg.ing.stations.dto.event.BookingEventMessage;
 import charg.ing.stations.repository.UserBalanceRepository;
 import lombok.RequiredArgsConstructor;
@@ -9,6 +10,8 @@ import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 
 import java.math.BigDecimal;
+import java.util.HashMap;
+import java.util.Map;
 
 @Slf4j
 @Component
@@ -16,6 +19,7 @@ import java.math.BigDecimal;
 public class BookingEventsConsumer {
 
     private final UserBalanceRepository balanceRepository;
+    private final AuditEventPublisher auditPublisher;
 
     @KafkaListener(topics = "booking.events", groupId = "payment-service-group")
     public void handleBookingEvent(BookingEventMessage event) {
@@ -54,7 +58,15 @@ public class BookingEventsConsumer {
                         return Mono.empty();
                     }))
                     .subscribe(
-                            saved -> log.info("Balance updated for user {}: new balance = {}", event.getUserId(), saved.getBalance()),
+                            saved -> {
+                                log.info("Balance updated for user {}: new balance = {}", event.getUserId(), saved.getBalance());
+                                Map<String, Object> payload = new HashMap<>();
+                                payload.put("debit", event.getTotalSum());
+                                payload.put("newBalance", saved.getBalance());
+                                payload.put("reason", "BOOKING");
+                                auditPublisher.publishBalance("DEBIT", event.getUserId(), "INFO",
+                                        "Booking settlement -" + event.getTotalSum(), payload);
+                            },
                             error -> log.error("Error updating balance for user {}: {}", event.getUserId(), error.getMessage())
                     );
         }

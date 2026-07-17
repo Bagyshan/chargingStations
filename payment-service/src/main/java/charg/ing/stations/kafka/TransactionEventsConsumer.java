@@ -1,5 +1,6 @@
 package charg.ing.stations.kafka;
 
+import charg.ing.stations.audit.AuditEventPublisher;
 import charg.ing.stations.dto.event.TransactionEventMessage;
 import charg.ing.stations.entity.UserBalance;
 import charg.ing.stations.repository.UserBalanceRepository;
@@ -10,6 +11,8 @@ import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 
 import java.math.BigDecimal;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -26,6 +29,7 @@ import java.util.UUID;
 public class TransactionEventsConsumer {
 
     private final UserBalanceRepository balanceRepository;
+    private final AuditEventPublisher auditPublisher;
 
     @KafkaListener(topics = "transaction.events", groupId = "payment-service-charging-group")
     public void handleTransactionEvent(TransactionEventMessage event) {
@@ -80,13 +84,29 @@ public class TransactionEventsConsumer {
                     }
                     BigDecimal debit = totalSum != null ? totalSum : BigDecimal.ZERO;
                     BigDecimal newBalance = balance.getBalance().subtract(debit);
+                    boolean clamped = false;
                     if (newBalance.compareTo(BigDecimal.ZERO) < 0) {
                         log.warn("Charging cost {} exceeds balance for user {}, clamping to 0", debit, userId);
                         newBalance = BigDecimal.ZERO;
+                        clamped = true;
                     }
                     balance.setBalance(newBalance);
                     balance.setCharging(false);
-                    return balanceRepository.save(balance);
+                    final BigDecimal debited = debit;
+                    final BigDecimal finalBalance = newBalance;
+                    final boolean wasClamped = clamped;
+                    return balanceRepository.save(balance)
+                            .doOnSuccess(saved -> {
+                                Map<String, Object> payload = new HashMap<>();
+                                payload.put("debit", debited);
+                                payload.put("newBalance", finalBalance);
+                                payload.put("reason", "CHARGING");
+                                if (wasClamped) {
+                                    payload.put("clampedToZero", true);
+                                }
+                                auditPublisher.publishBalance("DEBIT", userId, wasClamped ? "WARN" : "INFO",
+                                        "Charging settlement -" + debited, payload);
+                            });
                 })
                 .switchIfEmpty(Mono.fromRunnable(() ->
                         log.error("Balance not found for user {} on charging stop", userId)));

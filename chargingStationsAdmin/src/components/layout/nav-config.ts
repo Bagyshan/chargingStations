@@ -6,6 +6,7 @@ import {
   Coins,
   LayoutDashboard,
   Plug,
+  ScrollText,
   Settings,
   Users,
   Zap,
@@ -24,6 +25,7 @@ export type AppPath =
   | '/bookings'
   | '/transactions'
   | '/users'
+  | '/audit'
   | '/settings';
 
 export interface NavItem {
@@ -69,6 +71,7 @@ export const NAV: NavGroup[] = [
     title: 'Администрирование',
     items: [
       { to: '/users', label: 'Пользователи', icon: Users, roles: ['ADMIN'] },
+      { to: '/audit', label: 'Журнал аудита', icon: ScrollText, roles: ['ADMIN', 'SPECIALIST'] },
       { to: '/settings', label: 'Настройки', icon: Settings, roles: ALL },
     ],
   },

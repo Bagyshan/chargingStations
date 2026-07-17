@@ -1,5 +1,6 @@
 package charg.ing.stations.service;
 
+import charg.ing.stations.audit.AuditEventPublisher;
 import charg.ing.stations.config.DengiProperties;
 import charg.ing.stations.dengi.DengiClient;
 import charg.ing.stations.dto.dengi.CreateInvoiceResult;
@@ -22,7 +23,9 @@ import reactor.core.publisher.Mono;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -40,6 +43,7 @@ public class TopUpService {
     private final TransactionalOperator tx;
     private final DengiProperties props;
     private final BalanceEventProducer balanceEventProducer;
+    private final AuditEventPublisher auditPublisher;
 
     public TopUpService(DengiClient dengiClient,
                         TopUpRepository topUpRepository,
@@ -47,7 +51,8 @@ public class TopUpService {
                         DatabaseClient db,
                         TransactionalOperator tx,
                         DengiProperties props,
-                        BalanceEventProducer balanceEventProducer) {
+                        BalanceEventProducer balanceEventProducer,
+                        AuditEventPublisher auditPublisher) {
         this.dengiClient = dengiClient;
         this.topUpRepository = topUpRepository;
         this.entityTemplate = entityTemplate;
@@ -55,6 +60,7 @@ public class TopUpService {
         this.tx = tx;
         this.props = props;
         this.balanceEventProducer = balanceEventProducer;
+        this.auditPublisher = auditPublisher;
     }
 
     /**
@@ -248,6 +254,14 @@ public class TopUpService {
                             .newBalance(newBalance)
                             .timestamp(Instant.now())
                             .build());
+
+                    // Аудит: пополнение кошелька через O!Dengi.
+                    Map<String, Object> auditPayload = new HashMap<>();
+                    auditPayload.put("amount", credit.amount());
+                    auditPayload.put("newBalance", newBalance);
+                    auditPayload.put("provider", "ODENGI");
+                    auditPublisher.publishBalance("TOPUP", userId, "INFO",
+                            "Wallet top-up +" + credit.amount() + " (O!Dengi)", auditPayload);
 
                     if (isBooking || isCharging) {
                         balanceEventProducer.publishBalanceUpdated(BalanceUpdatedEvent.builder()

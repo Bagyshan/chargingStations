@@ -20,10 +20,10 @@ package de.rwth.idsg.steve.ocpp.ws;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.PingMessage;
 import org.springframework.web.socket.WebSocketSession;
 
-import java.io.IOException;
 import java.nio.ByteBuffer;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
@@ -45,9 +45,23 @@ public class PingTask implements Runnable {
         WebSocketLogger.sendingPing(chargeBoxId, session);
         try {
             session.sendMessage(PING_MESSAGE);
-        } catch (IOException e) {
+        } catch (Exception e) {
+            // Пинг не ушёл — соединение со станцией мертво (напр. у неё тихо пропал
+            // интернет). Рвём сессию сами, чтобы afterConnectionClosed немедленно
+            // выдал DISCONNECTED в station-controll: иначе мёртвая сессия висит до
+            // idle-timeout, а при возврате станции ломает штатный CONNECTED (onOpen
+            // видит «призрак» и не публикует переход 0->1).
             WebSocketLogger.pingError(chargeBoxId, session, e);
-            // TODO: Do something about this
+            closeDeadSession();
+        }
+    }
+
+    /** Закрывает мёртвую сессию, инициируя штатный путь onClose → DISCONNECTED. */
+    private void closeDeadSession() {
+        try {
+            session.close(CloseStatus.GOING_AWAY);
+        } catch (Exception closeError) {
+            log.warn("[chargeBoxId={}] Failed to close dead session: {}", chargeBoxId, closeError.getMessage());
         }
     }
 }
