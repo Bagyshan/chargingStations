@@ -1,11 +1,11 @@
 package charg.ing.stations.service;
 
 import charg.ing.stations.audit.AuditEventPublisher;
+import charg.ing.stations.config.StationTimeoutProperties;
 import charg.ing.stations.entity.ChargeBoxEntity;
 import charg.ing.stations.repository.ChargeBoxRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -41,14 +41,12 @@ public class StationConnectivityService {
     private final ChargeBoxRepository chargeBoxRepository;
     private final StationStateService stationStateService;
     private final AuditEventPublisher auditPublisher;
-
     /**
-     * Окно тишины, после которого свип гасит online. Должно превышать интервал OCPP-heartbeat
-     * станции (дефолт SteVe — 14400 c). По умолчанию 6 часов; уменьшайте только если у станций
-     * частый heartbeat. Чистые отключения ловятся событием DISCONNECTED, а не этим окном.
+     * Окно тишины offline-свипа. Держим как refreshable-холдер (не @Value-поле), чтобы порог
+     * можно было менять из Consul KV на лету — значение читается в {@link #sweepOffline()}
+     * в момент прогона.
      */
-    @Value("${station.offline-threshold-seconds:21600}")
-    private long offlineThresholdSeconds;
+    private final StationTimeoutProperties timeoutProps;
 
     @Transactional
     public void recordConnectivity(String chargeBoxId, String eventType, Instant timestamp) {
@@ -104,7 +102,7 @@ public class StationConnectivityService {
     @Scheduled(fixedDelayString = "${station.offline-sweep-ms:60000}")
     @Transactional
     public void sweepOffline() {
-        Instant threshold = Instant.now().minus(Duration.ofSeconds(offlineThresholdSeconds));
+        Instant threshold = Instant.now().minus(Duration.ofSeconds(timeoutProps.getOfflineThresholdSeconds()));
         List<String> stale = chargeBoxRepository.findStaleOnlineChargeBoxIds(threshold);
         for (String chargeBoxId : stale) {
             chargeBoxRepository.markOfflineAndBumpVersion(chargeBoxId);

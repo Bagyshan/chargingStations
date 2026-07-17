@@ -5,6 +5,13 @@ spring:
   application:
     name: station-controll-service
 
+  # Consul KV-config по умолчанию выключен (профиль local — без Consul, чтобы import-check
+  # не валил старт). Профили consul/docker включают его и объявляют spring.config.import.
+  cloud:
+    consul:
+      config:
+        enabled: false
+
   jpa:
     hibernate:
       ddl-auto: none   # Liquibase управляет схемой
@@ -42,7 +49,7 @@ management:
   endpoints:
     web:
       exposure:
-        include: "health,info,metrics,prometheus,beans"
+        include: "health,info,metrics,prometheus,beans,refresh"
       base-path: /actuator
 
 upload:

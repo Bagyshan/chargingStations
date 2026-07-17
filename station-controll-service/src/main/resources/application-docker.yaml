@@ -2,6 +2,20 @@ spring:
   config:
     activate:
       on-profile: docker
+    # Читать конфигурацию из Consul KV. optional: — не падать, если Consul недоступен/ключей нет.
+    # Фактическое включение — через env SPRING_CLOUD_CONSUL_CONFIG_ENABLED в docker-compose.prod.
+    import: "optional:consul:"
+
+  cloud:
+    consul:
+      config:
+        enabled: true           # прод-compose управляет через SPRING_CLOUD_CONSUL_CONFIG_ENABLED
+        prefix: config
+        format: KEY_VALUE
+        fail-fast: false
+        watch:
+          enabled: true
+          delay: 1000
 
   datasource:
     # внутри docker-compose сервис базы -- station-controller-db

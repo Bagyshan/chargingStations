@@ -2,6 +2,8 @@ spring:
   config:
     activate:
       on-profile: consul
+    # Читать конфигурацию из Consul KV. optional: — не падать, если Consul недоступен/ключей нет.
+    import: "optional:consul:"
 
   security:
     oauth2:
@@ -60,7 +62,13 @@ spring:
   cloud:
     consul:
       config:
-        enabled: false
+        enabled: true            # централизованный конфиг из Consul KV (JWK, таймауты)
+        prefix: config           # ключи ищутся в config/<app-name>/ и config/application/
+        format: KEY_VALUE        # каждый KV-ключ = отдельное property
+        fail-fast: false         # Consul недоступен → стартуем на дефолтах, не падаем
+        watch:
+          enabled: true          # опрашивать KV и авто-рефрешить бины при изменении
+          delay: 1000            # период опроса, мс (hot-reload ≈ 1 c)
       discovery:
         host: localhost
         port: 8500

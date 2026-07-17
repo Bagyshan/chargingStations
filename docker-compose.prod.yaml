@@ -291,6 +291,30 @@ services:
       - "-client=0.0.0.0"
     networks: [charging-stations-network]
 
+  # Разовый сид Consul KV (JWK + таймауты) значениями по умолчанию — чтобы ключи существовали
+  # и работал hot-reload. Идемпотентно; после сидирования контейнер завершается.
+  consul-kv-init:
+    image: consul:1.15
+    container_name: consul-kv-init
+    restart: "no"
+    logging: *default-logging
+    depends_on:
+      consul-server:
+        condition: service_started
+    environment:
+      CONSUL_HTTP_ADDR: http://consul-server:8500
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        until consul kv put config/_seed/ping ok >/dev/null 2>&1; do echo "waiting for consul..."; sleep 2; done
+        consul kv put config/application/app.security.jwk-set-uri "http://keycloak:8080/realms/charging-stations/protocol/openid-connect/certs"
+        consul kv put config/station-controll-service/station.offline-threshold-seconds "21600"
+        consul kv put config/state-updater-service/app.services.station-controll.base-url "lb://station-controll-service"
+        consul kv put config/state-updater-service/app.services.station-controll.connect-timeout-ms "5000"
+        consul kv put config/state-updater-service/app.services.station-controll.read-timeout-ms "30000"
+        echo "Consul KV seeded."
+    networks: [charging-stations-network]
+
   # ============================ Keycloak ============================
   # За nginx на корневых путях KC (/realms,/resources,/admin). Realm импортируется из
   # keycloak-realm-config/charging-stations-realm.json (--import-realm) — единый для всех окружений.
@@ -354,10 +378,13 @@ services:
       SPRING_DATASOURCE_USERNAME: station
       SPRING_DATASOURCE_PASSWORD: ${STATION_DB_PASSWORD:-changeme}
       KAFKA_BOOTSTRAPSERVERS: kafka:9092
+      # Фолбэк JWK, если ключ не задан в Consul KV. При включённом KV-config значение из
+      # config/application/app.security.jwk-set-uri имеет приоритет и может меняться на лету.
       SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWKSETURI: http://keycloak:8080/realms/charging-stations/protocol/openid-connect/certs
-      # Consul: только discovery (KV-config не используем — иначе import-check валит старт)
+      # Consul discovery + KV-config (JWK/таймауты с hot-reload). Импорт объявлен в
+      # application-docker.yaml, поэтому import-check больше не валит старт.
       SPRING_CLOUD_CONSUL_HOST: consul-server
-      SPRING_CLOUD_CONSUL_CONFIG_ENABLED: "false"
+      SPRING_CLOUD_CONSUL_CONFIG_ENABLED: "true"
       SPRING_CLOUD_CONSUL_DISCOVERY_PREFERIPADDRESS: "true"
       # Куда класть/откуда отдавать загруженные иконки. Совпадает с точкой
       # монтирования тома ниже, чтобы файлы переживали редеплой.
@@ -422,7 +449,9 @@ services:
       # consul.host = адрес АГЕНТА consul; discovery.prefer-ip = объявлять IP контейнера
       SPRING_CLOUD_CONSUL_HOST: consul-server
       SPRING_CLOUD_CONSUL_DISCOVERY_PREFERIPADDRESS: "true"
-      APP_SERVICES_STATIONCONTROLLSERVICE_URL: http://station-controll-service:8001
+      # station-controll зовём ПО ИМЕНИ через Consul discovery (lb://). Базовый URL и таймауты
+      # клиента правятся из Consul KV (config/state-updater-service/...) на лету.
+      APP_SERVICES_STATIONCONTROLL_BASEURL: lb://station-controll-service
     networks: [charging-stations-network]
     depends_on:
       kafka:

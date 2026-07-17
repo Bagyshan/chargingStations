@@ -237,6 +237,29 @@ services:
     networks:
       - charging-stations-network
 
+  # Разовый сид Consul KV значениями по умолчанию (JWK + таймауты). Локальные сервисы бегут
+  # на хосте и читают Consul через localhost:8500 — поэтому JWK указываем как localhost.
+  consul-kv-init:
+    image: consul:1.15
+    container_name: consul-kv-init
+    restart: "no"
+    depends_on:
+      - consul-server
+    environment:
+      CONSUL_HTTP_ADDR: http://consul-server:8500
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        until consul kv put config/_seed/ping ok >/dev/null 2>&1; do echo "waiting for consul..."; sleep 2; done
+        consul kv put config/application/app.security.jwk-set-uri "http://localhost:8080/realms/charging-stations/protocol/openid-connect/certs"
+        consul kv put config/station-controll-service/station.offline-threshold-seconds "21600"
+        consul kv put config/state-updater-service/app.services.station-controll.base-url "lb://station-controll-service"
+        consul kv put config/state-updater-service/app.services.station-controll.connect-timeout-ms "5000"
+        consul kv put config/state-updater-service/app.services.station-controll.read-timeout-ms "30000"
+        echo "Consul KV seeded."
+    networks:
+      - charging-stations-network
+
 
   zookeeper:
     image: confluentinc/cp-zookeeper:7.5.0
