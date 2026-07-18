@@ -15,7 +15,10 @@ x-logging: &default-logging
 # считает доступными 25% хоста (~1.9 ГБ на сервис) → 11 сервисов выедают всю RAM,
 # OOM-killer убивает контейнеры (exit 137) → рестарты → 502 на nginx.
 x-java-opts: &java-opts
-  JAVA_TOOL_OPTIONS: "-Xmx256m -XX:MaxMetaspaceSize=160m -XX:+UseSerialGC"
+  # -Dlogging.structured.format.console=ecs — включает структурный ECS-JSON лог в stdout
+  # у всех Boot-сервисов (Фаза 2). Docker json-file его пишет, а OTel Collector-agent
+  # тейлит и шлёт в ES/Kibana. Наблюдаемость станет из коробки понятной для машин.
+  JAVA_TOOL_OPTIONS: "-Xmx256m -XX:MaxMetaspaceSize=160m -XX:+UseSerialGC -Dlogging.structured.format.console=ecs"
 
 services:
 
@@ -720,12 +723,18 @@ services:
     container_name: otel-collector-agent
     restart: unless-stopped
     logging: *default-logging
+    # root нужен для чтения /var/lib/docker/containers (Фаза 2, логи).
+    user: "0:0"
     command: ["--config=/etc/otelcol/config.yaml"]
     volumes:
       - ./observability/otel-collector-agent.yaml:/etc/otelcol/config.yaml:ro
+      # Docker json-file логи всех контейнеров — их тейлит filelog receiver (только чтение).
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      # Чекпоинты позиций filelog (переживают рестарт агента).
+      - otelcol-agent-storage:/var/lib/otelcol/storage
     environment:
       OBSERVABILITY_OTLP_ENDPOINT: ${OBSERVABILITY_OTLP_ENDPOINT:-obs-vm:4317}
-    mem_limit: 300m
+    mem_limit: 400m
     networks: [charging-stations-network]
 
   # ============================ Reverse proxy ============================
@@ -765,3 +774,5 @@ volumes:
   # Загруженные иконки типов коннекторов и прочая станционная статика.
   # Без тома файлы живут в эфемерной ФС контейнера и теряются при редеплое.
   station-controll-uploads:
+  # Чекпоинты filelog OTel Collector-agent (позиции чтения Docker-логов).
+  otelcol-agent-storage:

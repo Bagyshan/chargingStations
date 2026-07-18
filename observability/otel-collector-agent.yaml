@@ -1,63 +1,81 @@
 # ============================================================================
 # OpenTelemetry Collector — AGENT (крутится на ПРОД-хосте, рядом с сервисами)
 # ----------------------------------------------------------------------------
-# Фаза 1: МЕТРИКИ. Локально скрейпит /actuator/prometheus каждого сервиса
-# (внутри charging-stations-network) и батчами шлёт по OTLP в gateway на
-# obs-VM (${OBSERVABILITY_OTLP_ENDPOINT}). Сервисы сами никуда не ходят —
-# для них это обычный входящий scrape, нулевая стоимость в пути запроса.
-#
-# В Фазе 2 сюда добавится receiver `filelog` (логи), в Фазе 3 — `otlp` (трейсы).
+# Единая воронка всех столпов с прод-хоста -> gateway на obs-VM (один порт OTLP).
+#   Фаза 1: МЕТРИКИ  — scrape /actuator/prometheus 11 сервисов.
+#   Фаза 2: ЛОГИ     — tail Docker json-file логов, парсинг ECS-JSON, -> ES/Kibana.
+#   Фаза 3: ТРЕЙСЫ   — здесь появится receiver otlp (приём от -javaagent сервисов).
+# Сервисы сами наружу ничего не шлют: метрики берутся scrape'ом, логи — из файлов.
 # ============================================================================
 
+extensions:
+  # Чекпоинты позиций filelog — чтобы после рестарта агента не терять/дублировать логи.
+  file_storage:
+    # Каталог создаёт смонтированный том otelcol-agent-storage (см. compose).
+    directory: /var/lib/otelcol/storage
+
 receivers:
-  # Скрейп Micrometer-эндпоинтов. job_name -> service.name в OTel.
+  # -------- Метрики (Фаза 1): scrape Micrometer-эндпоинтов; job_name -> service.name.
   prometheus:
     config:
       scrape_configs:
-        - job_name: station-controll-service
-          scrape_interval: 15s
-          metrics_path: /actuator/prometheus
-          static_configs: [{ targets: ['station-controll-service:8001'] }]
-        - job_name: station-integration-service
-          scrape_interval: 15s
-          metrics_path: /actuator/prometheus
-          static_configs: [{ targets: ['station-integration-service:8000'] }]
-        - job_name: state-updater-service
-          scrape_interval: 15s
-          metrics_path: /actuator/prometheus
-          static_configs: [{ targets: ['state-updater-service:8002'] }]
-        - job_name: websocket-service
-          scrape_interval: 15s
-          metrics_path: /actuator/prometheus
-          static_configs: [{ targets: ['websocket-service:8003'] }]
-        - job_name: contractor-admin-service
-          scrape_interval: 15s
-          metrics_path: /actuator/prometheus
-          static_configs: [{ targets: ['contractor-admin-service:8004'] }]
-        - job_name: user-service
-          scrape_interval: 15s
-          metrics_path: /actuator/prometheus
-          static_configs: [{ targets: ['user-service:8005'] }]
-        - job_name: notification-service
-          scrape_interval: 15s
-          metrics_path: /actuator/prometheus
-          static_configs: [{ targets: ['notification-service:8006'] }]
-        - job_name: payment-service
-          scrape_interval: 15s
-          metrics_path: /actuator/prometheus
-          static_configs: [{ targets: ['payment-service:8007'] }]
-        - job_name: booking-service
-          scrape_interval: 15s
-          metrics_path: /actuator/prometheus
-          static_configs: [{ targets: ['booking-service:8008'] }]
-        - job_name: audit-log-service
-          scrape_interval: 15s
-          metrics_path: /actuator/prometheus
-          static_configs: [{ targets: ['audit-log-service:8009'] }]
-        - job_name: api-gateway-service
-          scrape_interval: 15s
-          metrics_path: /actuator/prometheus
-          static_configs: [{ targets: ['api-gateway-service:8010'] }]
+        - { job_name: station-controll-service,     scrape_interval: 15s, metrics_path: /actuator/prometheus, static_configs: [{ targets: ['station-controll-service:8001'] }] }
+        - { job_name: station-integration-service,  scrape_interval: 15s, metrics_path: /actuator/prometheus, static_configs: [{ targets: ['station-integration-service:8000'] }] }
+        - { job_name: state-updater-service,        scrape_interval: 15s, metrics_path: /actuator/prometheus, static_configs: [{ targets: ['state-updater-service:8002'] }] }
+        - { job_name: websocket-service,            scrape_interval: 15s, metrics_path: /actuator/prometheus, static_configs: [{ targets: ['websocket-service:8003'] }] }
+        - { job_name: contractor-admin-service,     scrape_interval: 15s, metrics_path: /actuator/prometheus, static_configs: [{ targets: ['contractor-admin-service:8004'] }] }
+        - { job_name: user-service,                 scrape_interval: 15s, metrics_path: /actuator/prometheus, static_configs: [{ targets: ['user-service:8005'] }] }
+        - { job_name: notification-service,         scrape_interval: 15s, metrics_path: /actuator/prometheus, static_configs: [{ targets: ['notification-service:8006'] }] }
+        - { job_name: payment-service,              scrape_interval: 15s, metrics_path: /actuator/prometheus, static_configs: [{ targets: ['payment-service:8007'] }] }
+        - { job_name: booking-service,              scrape_interval: 15s, metrics_path: /actuator/prometheus, static_configs: [{ targets: ['booking-service:8008'] }] }
+        - { job_name: audit-log-service,            scrape_interval: 15s, metrics_path: /actuator/prometheus, static_configs: [{ targets: ['audit-log-service:8009'] }] }
+        - { job_name: api-gateway-service,          scrape_interval: 15s, metrics_path: /actuator/prometheus, static_configs: [{ targets: ['api-gateway-service:8010'] }] }
+
+  # -------- Логи (Фаза 2): tail Docker json-file, разбор ECS-JSON от Boot-сервисов.
+  # Операторы проверены локально на реальном ECS-выводе booking-service.
+  filelog:
+    include: [ /var/lib/docker/containers/*/*-json.log ]
+    start_at: end
+    storage: file_storage
+    operators:
+      # 1) Снять обёртку Docker json-file: body = строка приложения, + время/поток/container.id
+      - type: container
+        format: docker
+        add_metadata_from_filepath: true
+      # 2) Разобрать ECS-JSON приложения; не-JSON строки (баннеры, инфра) проходят как есть
+      - type: json_parser
+        parse_from: body
+        on_error: send_quiet
+      # 3) Время события — из @timestamp приложения (наносекунды, RFC3339)
+      - type: time_parser
+        parse_from: attributes["@timestamp"]
+        layout_type: gotime
+        layout: '2006-01-02T15:04:05.999999999Z07:00'
+        if: 'attributes["@timestamp"] != nil'
+      # 4) Уровень -> severity записи
+      - type: severity_parser
+        parse_from: attributes["log.level"]
+        if: 'attributes["log.level"] != nil'
+      # 5) message -> тело записи
+      - type: move
+        from: attributes["message"]
+        to: body
+        if: 'attributes["message"] != nil'
+      # 6) service.name -> resource (нужно ES-экспортёру для ECS service.name)
+      - type: move
+        from: attributes["service.name"]
+        to: resource["service.name"]
+        if: 'attributes["service.name"] != nil'
+      # 7) Убрать дубли, уже промоутнутые в слоты записи (иначе конфликт типов в ES)
+      - type: remove
+        field: attributes["@timestamp"]
+        if: 'attributes["@timestamp"] != nil'
+      - type: remove
+        field: attributes["log.level"]
+        if: 'attributes["log.level"] != nil'
+      - type: remove
+        field: attributes["time"]
+        if: 'attributes["time"] != nil'
 
 processors:
   memory_limiter:
@@ -67,15 +85,19 @@ processors:
   batch:
     send_batch_size: 1024
     timeout: 5s
+  # Оставляем только логи наших сервисов (у них проставился resource service.name).
+  # Инфра-контейнеры (postgres/kafka/redis) и не-JSON строки отбрасываются.
+  filter/apps-only:
+    error_mode: ignore
+    logs:
+      log_record:
+        - 'resource.attributes["service.name"] == nil'
 
 exporters:
-  # OTLP в gateway на obs-VM. Адрес задаётся env OBSERVABILITY_OTLP_ENDPOINT
-  # (например obs-vm-host:4317). Линк держать в приватной сети/VPN.
   otlp/gateway:
     endpoint: ${env:OBSERVABILITY_OTLP_ENDPOINT}
     tls:
       insecure: true
-    # если gateway недоступен — буферизуем, а не роняем метрики
     sending_queue:
       enabled: true
       queue_size: 5000
@@ -83,11 +105,16 @@ exporters:
       enabled: true
 
 service:
+  extensions: [file_storage]
   telemetry:
     metrics:
-      address: 0.0.0.0:8888   # self-метрики агента
+      address: 0.0.0.0:8888
   pipelines:
     metrics:
       receivers: [prometheus]
       processors: [memory_limiter, batch]
+      exporters: [otlp/gateway]
+    logs:
+      receivers: [filelog]
+      processors: [memory_limiter, filter/apps-only, batch]
       exporters: [otlp/gateway]
