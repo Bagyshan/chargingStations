@@ -8,6 +8,13 @@ RUN java -Djarmode=layertools -jar application.jar extract --destination extract
 
 FROM eclipse-temurin:21.0.2_13-jdk-jammy
 
+# OTel Java-агент (Phase 3): авто-инструментация трейсов (WebFlux, WebClient, Kafka,
+# R2DBC/JDBC, Redis, Spring Security) без правок кода. Подключается через -javaagent
+# в JAVA_TOOL_OPTIONS (см. x-java-opts в docker-compose.prod.yaml). Скачивается демоном
+# на этапе сборки; chmod 0644 — чтобы non-root пользователь spring-boot мог читать jar.
+ADD https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/download/v2.6.0/opentelemetry-javaagent.jar /otel/opentelemetry-javaagent.jar
+RUN chmod 0644 /otel/opentelemetry-javaagent.jar
+
 RUN addgroup spring-boot-group && adduser --ingroup spring-boot-group spring-boot
 # Каталог для загружаемой статики (иконки коннекторов station-controll-service).
 # Создаём с правами spring-boot заранее, чтобы docker-том, смонтированный сюда,

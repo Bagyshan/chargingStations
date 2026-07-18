@@ -15,6 +15,14 @@ extensions:
     directory: /var/lib/otelcol/storage
 
 receivers:
+  # -------- Трейсы (Фаза 3): приём OTLP от OTel-агентов сервисов (они шлют на otel-collector-agent:4317).
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
   # -------- Метрики (Фаза 1): scrape Micrometer-эндпоинтов; job_name -> service.name.
   prometheus:
     config:
@@ -79,6 +87,20 @@ receivers:
       - type: remove
         field: attributes["time"]
         if: 'attributes["time"] != nil'
+      # 8) trace_id/span_id (их инжектит OTel-агент в MDC) -> в trace-контекст записи.
+      # Даёт связку лог↔трейс: ES-экспортёр в ecs-режиме положит их в trace.id/span.id.
+      - type: trace_parser
+        trace_id:
+          parse_from: attributes["trace_id"]
+        span_id:
+          parse_from: attributes["span_id"]
+        if: 'attributes["trace_id"] != nil'
+      - type: remove
+        field: attributes["trace_id"]
+        if: 'attributes["trace_id"] != nil'
+      - type: remove
+        field: attributes["span_id"]
+        if: 'attributes["span_id"] != nil'
 
 processors:
   memory_limiter:
@@ -113,6 +135,11 @@ service:
     metrics:
       address: 0.0.0.0:8888
   pipelines:
+    # Трейсы (Фаза 3): приём от агентов сервисов -> форвард на gateway -> Tempo.
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [otlp/gateway]
     metrics:
       receivers: [prometheus]
       processors: [memory_limiter, batch]

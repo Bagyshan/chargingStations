@@ -15,10 +15,21 @@ x-logging: &default-logging
 # считает доступными 25% хоста (~1.9 ГБ на сервис) → 11 сервисов выедают всю RAM,
 # OOM-killer убивает контейнеры (exit 137) → рестарты → 502 на nginx.
 x-java-opts: &java-opts
-  # -Dlogging.structured.format.console=ecs — включает структурный ECS-JSON лог в stdout
-  # у всех Boot-сервисов (Фаза 2). Docker json-file его пишет, а OTel Collector-agent
-  # тейлит и шлёт в ES/Kibana. Наблюдаемость станет из коробки понятной для машин.
-  JAVA_TOOL_OPTIONS: "-Xmx256m -XX:MaxMetaspaceSize=160m -XX:+UseSerialGC -Dlogging.structured.format.console=ecs"
+  # JAVA_TOOL_OPTIONS подхватывается JVM автоматически. Здесь:
+  #  -Dlogging.structured.format.console=ecs — структурный ECS-JSON лог (Фаза 2).
+  #  -javaagent:.../opentelemetry-javaagent.jar — OTel-агент трейсинга (Фаза 3), запечён в образ (Dockerfile-services).
+  #  MaxMetaspaceSize поднят 160→256: агент грузит много классов, иначе риск OOM metaspace.
+  JAVA_TOOL_OPTIONS: "-Xmx256m -XX:MaxMetaspaceSize=256m -XX:+UseSerialGC -Dlogging.structured.format.console=ecs -javaagent:/otel/opentelemetry-javaagent.jar"
+  # OTel-агент: шлём ТОЛЬКО трейсы (метрики — Micrometer/Prometheus, логи — filelog).
+  # service.name агент берёт из spring.application.name. Трейсы -> локальный agent-collector,
+  # он форвардит на gateway (единая воронка). 100% сэмплинг — нужен полный путь каждого запроса.
+  OTEL_TRACES_EXPORTER: otlp
+  OTEL_METRICS_EXPORTER: none
+  OTEL_LOGS_EXPORTER: none
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector-agent:4317
+  OTEL_EXPORTER_OTLP_PROTOCOL: grpc
+  OTEL_PROPAGATORS: tracecontext,baggage
+  OTEL_TRACES_SAMPLER: parentbased_always_on
 
 services:
 
