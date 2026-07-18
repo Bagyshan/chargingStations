@@ -14,6 +14,12 @@ global:
   external_labels:
     monitor: charging-stations
 
+# OTel remote-write / рестарты Collector'а иногда шлют семплы «из прошлого».
+# Без окна OOO Prometheus отвергает их (HTTP 400 "out of order sample") и дропает метрики.
+storage:
+  tsdb:
+    out_of_order_time_window: 30m
+
 scrape_configs:
   - job_name: prometheus
     static_configs:
