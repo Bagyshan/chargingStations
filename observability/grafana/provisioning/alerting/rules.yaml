@@ -1,0 +1,104 @@
+# Grafana provisioned alert rules (Phase 4). Канал — только Grafana UI (Alerting → Alert rules).
+# Внешних уведомлений нет; правила показывают состояние Normal/Pending/Firing в интерфейсе.
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: charging-core
+    folder: Charging Stations
+    interval: 1m
+    rules:
+      # -------- Сервис недоступен (up < 1) --------
+      - uid: charging-service-down
+        title: Service down
+        condition: C
+        for: 2m
+        noDataState: NoData
+        execErrState: Error
+        labels:
+          severity: critical
+        annotations:
+          summary: "Сервис {{ $labels.service_name }} недоступен (up=0)"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              editorMode: code
+              expr: max by (service_name) (up)
+          - refId: C
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: lt, params: [1] }
+
+      # -------- Высокая доля 5xx (>5% за 5м) --------
+      - uid: charging-high-5xx
+        title: High 5xx error rate
+        condition: C
+        for: 5m
+        noDataState: OK
+        execErrState: OK
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.service_name }}: доля 5xx > 5% за 5м"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              editorMode: code
+              expr: >
+                sum by (service_name) (rate(http_server_requests_seconds_count{status=~"5.."}[5m]))
+                /
+                sum by (service_name) (rate(http_server_requests_seconds_count[5m]))
+          - refId: C
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0.05] }
+
+      # -------- Высокая латентность (p95 > 2с за 5м) --------
+      - uid: charging-high-latency
+        title: High latency p95
+        condition: C
+        for: 5m
+        noDataState: OK
+        execErrState: OK
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.service_name }}: p95 латентность > 2с за 5м"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              editorMode: code
+              expr: >
+                histogram_quantile(0.95,
+                  sum by (le, service_name) (rate(http_server_requests_seconds_bucket[5m])))
+          - refId: C
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [2] }
