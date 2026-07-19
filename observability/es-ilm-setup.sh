@@ -7,9 +7,14 @@
 # ILM катит rollover в -000002, -000003... и удаляет куски старше 7д. Экспортёр менять не нужно
 # (в gateway остаётся logs_index: logs-charging — теперь это write-alias).
 #
-# Запуск ОДИН РАЗ на obs-VM:
-#   ./observability/es-ilm-setup.sh
-#   # или удалённо: ES_ADDR=http://obs-vm:9200 ./observability/es-ilm-setup.sh
+# ВАЖНО: ES не опубликован на хост obs-VM (нет ports:), он доступен только внутри сети
+# observability-net. Поэтому запускать скрипт нужно ИЗНУТРИ контейнера elasticsearch,
+# где localhost:9200 доступен:
+#
+#   docker cp observability/es-ilm-setup.sh elasticsearch:/tmp/es-ilm-setup.sh
+#   docker exec elasticsearch bash /tmp/es-ilm-setup.sh
+#
+# (либо с любого хоста в сети: ES_ADDR=http://elasticsearch:9200 через curl-контейнер).
 #
 # ВНИМАНИЕ: если logs-charging уже существует как ОБЫЧНЫЙ индекс (его создал экспортёр),
 # скрипт его удалит (немного накопленных логов потеряется) и пересоздаст как alias.
