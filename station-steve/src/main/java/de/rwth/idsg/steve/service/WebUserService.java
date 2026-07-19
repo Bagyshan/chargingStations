@@ -78,24 +78,31 @@ public class WebUserService implements UserDetailsManager {
 
     @EventListener
     public void afterStart(ContextRefreshedEvent event) {
-        if (this.hasUserWithAuthority("ADMIN")) {
-            return;
-        }
+        var auth = SteveConfiguration.CONFIG.getAuth();
+        var username = auth.getUserName();
 
         var headerVal = SteveConfiguration.CONFIG.getWebApi().getHeaderValue();
-
         var encodedApiPassword = StringUtils.isEmpty(headerVal)
             ? null
-            : SteveConfiguration.CONFIG.getAuth().getPasswordEncoder().encode(headerVal);
+            : auth.getPasswordEncoder().encode(headerVal);
 
         var user = new WebUserRecord()
-            .setUsername(SteveConfiguration.CONFIG.getAuth().getUserName())
-            .setPassword(SteveConfiguration.CONFIG.getAuth().getEncodedPassword())
+            .setUsername(username)
+            .setPassword(auth.getEncodedPassword())
             .setApiPassword(encodedApiPassword)
             .setEnabled(true)
             .setAuthorities(toJson(AuthorityUtils.createAuthorityList("ADMIN")));
 
-        webUserRepository.createUser(user);
+        // Насильно синхронизируем учётку админа с конфигом при КАЖДОМ старте: и веб-пароль, и apiPassword
+        // (оба = $STEVE_AUTH_PASSWORD). Иначе смена пароля в properties не подхватывалась бы на уже
+        // проинициализированной БД — старый admin оставался бы в web_user, а station-integration ходил бы
+        // со старым apiPassword. userCache инвалидируем, чтобы /api/** сразу увидел новый пароль.
+        if (webUserRepository.loadUserByUsername(username) == null) {
+            webUserRepository.createUser(user);
+        } else {
+            webUserRepository.updateUser(user);
+        }
+        userCache.invalidate(username);
     }
 
     @Override

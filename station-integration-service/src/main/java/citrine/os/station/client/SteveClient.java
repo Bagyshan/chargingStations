@@ -17,7 +17,10 @@ public class SteveClient {
         return (request, next) -> {
             StringBuilder sb = new StringBuilder();
             sb.append(">>> Request: ").append(request.method()).append(" ").append(request.url()).append("\n");
-            request.headers().forEach((name, values) -> values.forEach(value -> sb.append(name).append(": ").append(value).append("\n")));
+            request.headers().forEach((name, values) -> values.forEach(value ->
+                    sb.append(name).append(": ")
+                      .append("authorization".equalsIgnoreCase(name) ? "<redacted>" : value)
+                      .append("\n")));
 
             // Попробуем извлечь тело, если оно String
             if (request.body() != null) {
@@ -38,10 +41,14 @@ public class SteveClient {
         });
     }
 
-    public SteveClient(@Value("${steve.base-url}") String baseUrl) {
+    public SteveClient(
+            @Value("${steve.base-url}") String baseUrl,
+            @Value("${steve.username:admin}") String username,
+            @Value("${steve.api-password:}") String apiPassword) {
         this.webClient = WebClient.builder()
                 .baseUrl(baseUrl)
-                .defaultHeaders(headers -> headers.setBasicAuth("admin", "1234"))
+                // Креды берутся из конфига (env STEVE_AUTH_PASSWORD) — единый API-пароль SteVe.
+                .defaultHeaders(headers -> headers.setBasicAuth(username, apiPassword))
                 .filter(logRequest())
                 .filter(logResponse())
                 .build();

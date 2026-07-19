@@ -344,6 +344,10 @@ services:
       KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:-changeme}
       KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
       KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-changeme}
+      # Подставляются в realm JSON при --import-realm (${KEYCLOAK_CLIENT_SECRET}, ${EMAIL_PASSWORD}).
+      # Импорт срабатывает только на пустой БД Keycloak; на живом проде realm уже в БД — не перечитывается.
+      KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_CLIENT_SECRET:?KEYCLOAK_CLIENT_SECRET must be set in .env}
+      EMAIL_PASSWORD: ${EMAIL_PASSWORD:?EMAIL_PASSWORD must be set in .env}
       KC_HOSTNAME: ${SERVER_HOST:-localhost}
       KC_HOSTNAME_STRICT: "false"
       KC_HOSTNAME_STRICT_HTTPS: "false"
@@ -368,6 +372,10 @@ services:
     restart: unless-stopped
     logging: *default-logging
     # Доступ к SteVe (админка + OCPP WebSocket) — через nginx по пути /steve/, портов наружу не открываем.
+    environment:
+      # Пароль веб-админки SteVe. main.properties читает $STEVE_AUTH_PASSWORD из окружения
+      # (PropertiesFileLoader.resolveIfSystemEnv). Без него docker compose up падает — задать в .env.
+      STEVE_AUTH_PASSWORD: ${STEVE_AUTH_PASSWORD:?STEVE_AUTH_PASSWORD must be set in .env}
     volumes:
       - ./station-steve:/code
     networks: [charging-stations-network]
@@ -431,6 +439,8 @@ services:
       SPRING_PROFILES_ACTIVE: docker
       KAFKA_BOOTSTRAPSERVERS: kafka:9092
       STEVE_URL: http://app:8180/steve
+      # Единый API-пароль SteVe для Basic Auth station-integration (тот же $STEVE_AUTH_PASSWORD, что у SteVe).
+      STEVE_AUTH_PASSWORD: ${STEVE_AUTH_PASSWORD:?STEVE_AUTH_PASSWORD must be set in .env}
       # Листенер ocpp.requests читает Acknowledgment вручную → нужен MANUAL ack-mode
       # (в docker-профиле его не было, только в consul-профиле — отсюда падение зарядки).
       SPRING_KAFKA_LISTENER_ACKMODE: MANUAL_IMMEDIATE
@@ -561,11 +571,11 @@ services:
       SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUERURI: http://${SERVER_HOST:-localhost}/realms/charging-stations
       SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWKSETURI: http://keycloak:8080/realms/charging-stations/protocol/openid-connect/certs
       APP_BASEURL: http://${SERVER_HOST:-localhost}/user
-      KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_CLIENT_SECRET:-lk6oom9CCmAsItuL9P5uSKI7vd0HuIBa}
+      KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_CLIENT_SECRET:?KEYCLOAK_CLIENT_SECRET must be set in .env}
       KEYCLOAK_ADMIN_USERNAME: ${KEYCLOAK_ADMIN:-admin}
       KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-changeme}
       EMAIL_USERNAME: ${EMAIL_USERNAME:-bagishan01@gmail.com}
-      EMAIL_PASSWORD: ${EMAIL_PASSWORD:-mviuxihupjsaaawq}
+      EMAIL_PASSWORD: ${EMAIL_PASSWORD:?EMAIL_PASSWORD must be set in .env}
       INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:-charging-internal-2026}
     networks: [charging-stations-network]
     depends_on:
@@ -592,7 +602,7 @@ services:
       SPRING_KAFKA_BOOTSTRAPSERVERS: kafka:9092
       SPRING_MAIL_HOST: ${EMAIL_HOST:-smtp.gmail.com}
       SPRING_MAIL_USERNAME: ${EMAIL_USERNAME:-bagishan01@gmail.com}
-      SPRING_MAIL_PASSWORD: ${EMAIL_PASSWORD:-mviuxihupjsaaawq}
+      SPRING_MAIL_PASSWORD: ${EMAIL_PASSWORD:?EMAIL_PASSWORD must be set in .env}
       APP_BASEURL: http://${SERVER_HOST:-localhost}/user
       # FCM push: файл ключа монтируется томом ниже; без файла пуши выключены (WARN).
       FCM_SERVICE_ACCOUNT_FILE: /etc/batenergy/firebase-service-account.json
@@ -629,7 +639,7 @@ services:
       JWK_SET_URI: http://keycloak:8080/realms/charging-stations/protocol/openid-connect/certs
       DENGI_API_URL: ${DENGI_API_URL:-https://mw-api-test.dengi.kg/api/json/json.php}
       DENGI_SID: ${DENGI_SID:-3567780484}
-      DENGI_PASSWORD: "${DENGI_PASSWORD:-@PDI(F239#H7PGD}"
+      DENGI_PASSWORD: "${DENGI_PASSWORD:?DENGI_PASSWORD must be set in .env}"
       DENGI_TEST: ${DENGI_TEST:-1}
       DENGI_RESULT_URL: http://${SERVER_HOST:-localhost}/payment/api/v1/payments/callback
     networks: [charging-stations-network]
@@ -759,6 +769,9 @@ services:
       # - "443:443"   # включить вместе с ssl-блоком в nginx/conf.d/default.conf
     volumes:
       - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      # HTTP Basic Auth для ops-админок (Consul / Kafka-UI / Keycloak-admin / SteVe manager).
+      # Файл создать ДО первого запуска (см. SECURITY_TASKS.md), в git не коммитить (.gitignore).
+      - ./nginx/.htpasswd:/etc/nginx/.htpasswd:ro
       # Статика админ-панели (React SPA) — раздаётся на /console/. Собирается
       # `chargingStationsAdmin` → npm run build (см. deploy-admin.sh / DEPLOY.md).
       - ./chargingStationsAdmin/dist:/usr/share/nginx/html/console:ro

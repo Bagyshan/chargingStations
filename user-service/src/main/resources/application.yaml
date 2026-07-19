@@ -61,7 +61,7 @@ spring:
     host: smtp.gmail.com
     port: 587
     username: ${EMAIL_USERNAME:bagishan01@gmail.com}
-    password: ${EMAIL_PASSWORD:mviuxihupjsaaawq}
+    password: ${EMAIL_PASSWORD:}
     properties:
       mail:
         smtp:
@@ -87,7 +87,7 @@ keycloak:
   realm: charging-stations
   resource: user-service
   credentials:
-    secret: ${KEYCLOAK_CLIENT_SECRET:lk6oom9CCmAsItuL9P5uSKI7vd0HuIBa}
+    secret: ${KEYCLOAK_CLIENT_SECRET:}
   admin:
     username: ${KEYCLOAK_ADMIN_USERNAME:admin}
     password: ${KEYCLOAK_ADMIN_PASSWORD:changeme}

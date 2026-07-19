@@ -63,7 +63,7 @@ spring:
 dengi:
   api-url: ${DENGI_API_URL:https://mw-api-test.dengi.kg/api/json/json.php}
   sid: ${DENGI_SID:3567780484}
-  password: "${DENGI_PASSWORD:@PDI(F239#H7PGD}"
+  password: "${DENGI_PASSWORD:}"
   version: ${DENGI_VERSION:1005}
   lang: ${DENGI_LANG:ru}
   test: ${DENGI_TEST:1}

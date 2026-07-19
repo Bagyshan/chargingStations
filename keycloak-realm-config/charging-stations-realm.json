@@ -1100,7 +1100,7 @@
       "enabled": true,
       "alwaysDisplayInConsole": false,
       "clientAuthenticatorType": "client-secret",
-      "secret": "lk6oom9CCmAsItuL9P5uSKI7vd0HuIBa",
+      "secret": "${KEYCLOAK_CLIENT_SECRET}",
       "redirectUris": [
         "http://localhost:8005/*"
       ],
@@ -1878,7 +1878,7 @@
     "auth": "true",
     "envelopeFrom": "",
     "ssl": "false",
-    "password": "mviuxihupjsaaawq",
+    "password": "${EMAIL_PASSWORD}",
     "port": "587",
     "host": "smtp.gmail.com",
     "replyTo": "",

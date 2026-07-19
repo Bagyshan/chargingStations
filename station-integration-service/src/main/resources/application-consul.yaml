@@ -42,4 +42,6 @@ spring:
 
 steve:
   base-url: http://0.0.0.0:8180
+  username: ${STEVE_USERNAME:admin}
+  api-password: ${STEVE_AUTH_PASSWORD:1234}
 

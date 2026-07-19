@@ -2,6 +2,8 @@ target/
 # Секреты деплоя — не коммитить (см. .env.example)
 .env
 /nginx/certs/
+# Basic Auth для ops-админок (Consul/Kafka-UI/Keycloak-admin/SteVe manager) — хэши, не коммитить
+/nginx/.htpasswd
 !.mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/
 !**/src/test/**/target/
@@ -44,7 +46,8 @@ build/
 
 /chargingStationsMobile/
 /chargingStationsMobile/**
-
+/SECURITY_TASKS.md
+SECURITY_TASKS.md
 /'Инструкция Sandbox (6) (2).pdf'
 /CLAUDE.md
 /tasks_chargingStations.txt

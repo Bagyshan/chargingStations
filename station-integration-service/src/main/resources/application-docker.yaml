@@ -26,3 +26,6 @@ spring:
 
 steve:
   base-url: ${STEVE_URL:http://app:8180}
+  username: ${STEVE_USERNAME:admin}
+  # API-пароль SteVe (Basic Auth на /api/**). Совпадает с webapi.value SteVe = $STEVE_AUTH_PASSWORD.
+  api-password: ${STEVE_AUTH_PASSWORD:}
