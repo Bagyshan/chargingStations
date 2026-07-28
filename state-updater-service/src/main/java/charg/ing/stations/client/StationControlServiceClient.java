@@ -8,9 +8,9 @@ import reactor.core.publisher.Flux;
 /**
  * Реактивный клиент к station-controll-service.
  *
- * <p>Зовём сервис ПО ИМЕНИ через Consul discovery: {@code lb://station-controll-service}
- * (baseUrl зашит в {@code stationControlWebClient}, см. {@link charg.ing.stations.config.ConsulConfig}).
- * Никаких хардкод-хостов/портов — инстанс выбирает load balancer из реестра.
+ * <p>Зовём сервис по прямому DNS-имени: {@code http://station-controll-service:8001}
+ * (baseUrl в {@code stationControlWebClient}, см. {@link charg.ing.stations.config.ConsulConfig};
+ * значение правится из Consul KV на лету). Балансировку делает инфраструктура (docker/K8s DNS).
  *
  * <p>Feign в реактивном стеке не поддерживается — используется {@link WebClient}.
  */

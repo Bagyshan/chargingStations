@@ -198,14 +198,14 @@ services:
     logging: *default-logging
     depends_on:
       - zookeeper
-    # 29092 наружу — для отладки с хоста; контейнеры ходят на kafka:9092.
-    ports:
-      - "29092:29092"
+    # #5: наружу НЕ публикуем (был проброс 29092 «для отладки» = кто угодно читал/писал любой топик
+    # PLAINTEXT без auth). Контейнеры ходят на kafka:9092 по внутренней сети. Для отладки с хоста —
+    # `docker exec kafka ...` или SSH-туннель. В Kubernetes Kafka = ClusterIP (внешнего доступа нет по умолчанию).
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
     networks: [charging-stations-network]
     healthcheck:
@@ -323,7 +323,7 @@ services:
         until consul kv put config/_seed/ping ok >/dev/null 2>&1; do echo "waiting for consul..."; sleep 2; done
         consul kv put config/application/app.security.jwk-set-uri "http://keycloak:8080/realms/charging-stations/protocol/openid-connect/certs"
         consul kv put config/station-controll-service/station.offline-threshold-seconds "21600"
-        consul kv put config/state-updater-service/app.services.station-controll.base-url "lb://station-controll-service"
+        consul kv put config/state-updater-service/app.services.station-controll.base-url "http://station-controll-service:8001"
         consul kv put config/state-updater-service/app.services.station-controll.connect-timeout-ms "5000"
         consul kv put config/state-updater-service/app.services.station-controll.read-timeout-ms "30000"
         echo "Consul KV seeded."
@@ -413,7 +413,7 @@ services:
       UPLOAD_PATH: /application/uploads
       # Публичный хост для абсолютных ссылок на иконки (connectorTypeIcon).
       # Берётся из того же SERVER_HOST, что и Keycloak issuer, — на проде это IP/домен.
-      APP_PUBLIC_BASE_URL: http://${SERVER_HOST:-localhost}
+      APP_PUBLIC_BASE_URL: ${PUBLIC_SCHEME:-http}://${SERVER_HOST:-localhost}
     networks: [charging-stations-network]
     volumes:
       - station-controll-uploads:/application/uploads
@@ -473,9 +473,9 @@ services:
       # consul.host = адрес АГЕНТА consul; discovery.prefer-ip = объявлять IP контейнера
       SPRING_CLOUD_CONSUL_HOST: consul-server
       SPRING_CLOUD_CONSUL_DISCOVERY_PREFERIPADDRESS: "true"
-      # station-controll зовём ПО ИМЕНИ через Consul discovery (lb://). Базовый URL и таймауты
-      # клиента правятся из Consul KV (config/state-updater-service/...) на лету.
-      APP_SERVICES_STATIONCONTROLL_BASEURL: lb://station-controll-service
+      # station-controll зовём по прямому DNS-имени (docker/K8s). НЕ lb:// — балансировку делает
+      # инфраструктура. Базовый URL и таймауты клиента правятся из Consul KV на лету (@RefreshScope).
+      APP_SERVICES_STATIONCONTROLL_BASEURL: http://station-controll-service:8001
     networks: [charging-stations-network]
     depends_on:
       kafka:
@@ -568,9 +568,9 @@ services:
       SPRING_KAFKA_BOOTSTRAPSERVERS: kafka:9092
       SPRING_CLOUD_CONSUL_HOST: consul-server
       KEYCLOAK_AUTHSERVERURL: http://keycloak:8080
-      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUERURI: http://${SERVER_HOST:-localhost}/realms/charging-stations
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUERURI: ${PUBLIC_SCHEME:-http}://${SERVER_HOST:-localhost}/realms/charging-stations
       SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWKSETURI: http://keycloak:8080/realms/charging-stations/protocol/openid-connect/certs
-      APP_BASEURL: http://${SERVER_HOST:-localhost}/user
+      APP_BASEURL: ${PUBLIC_SCHEME:-http}://${SERVER_HOST:-localhost}/user
       KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_CLIENT_SECRET:?KEYCLOAK_CLIENT_SECRET must be set in .env}
       KEYCLOAK_ADMIN_USERNAME: ${KEYCLOAK_ADMIN:-admin}
       KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-changeme}
@@ -603,7 +603,7 @@ services:
       SPRING_MAIL_HOST: ${EMAIL_HOST:-smtp.gmail.com}
       SPRING_MAIL_USERNAME: ${EMAIL_USERNAME:-bagishan01@gmail.com}
       SPRING_MAIL_PASSWORD: ${EMAIL_PASSWORD:?EMAIL_PASSWORD must be set in .env}
-      APP_BASEURL: http://${SERVER_HOST:-localhost}/user
+      APP_BASEURL: ${PUBLIC_SCHEME:-http}://${SERVER_HOST:-localhost}/user
       # FCM push: файл ключа монтируется томом ниже; без файла пуши выключены (WARN).
       FCM_SERVICE_ACCOUNT_FILE: /etc/batenergy/firebase-service-account.json
       USER_SERVICE_URL: http://user-service:8005
@@ -641,7 +641,7 @@ services:
       DENGI_SID: ${DENGI_SID:-3567780484}
       DENGI_PASSWORD: "${DENGI_PASSWORD:?DENGI_PASSWORD must be set in .env}"
       DENGI_TEST: ${DENGI_TEST:-1}
-      DENGI_RESULT_URL: http://${SERVER_HOST:-localhost}/payment/api/v1/payments/callback
+      DENGI_RESULT_URL: ${PUBLIC_SCHEME:-http}://${SERVER_HOST:-localhost}/payment/api/v1/payments/callback
     networks: [charging-stations-network]
     depends_on:
       payment-service-db:
@@ -766,20 +766,42 @@ services:
     logging: *default-logging
     ports:
       - "80:80"
-      # - "443:443"   # включить вместе с ssl-блоком в nginx/conf.d/default.conf
+      - "443:443"   # TLS (#6). Сертификат кладёт certbot; ПЕРВЫЙ запуск — через nginx/init-letsencrypt.sh
+                    # (иначе nginx не стартует без сертификата). В K8s это Ingress + cert-manager.
     volumes:
       - ./nginx/conf.d:/etc/nginx/conf.d:ro
-      # HTTP Basic Auth для ops-админок (Consul / Kafka-UI / Keycloak-admin / SteVe manager).
-      # Файл создать ДО первого запуска (см. SECURITY_TASKS.md), в git не коммитить (.gitignore).
+      # HTTP Basic Auth для ops-админок (Consul / Kafka-UI). Файл создать ДО первого запуска
+      # (см. SECURITY_TASKS.md), в git не коммитить (.gitignore).
       - ./nginx/.htpasswd:/etc/nginx/.htpasswd:ro
-      # Статика админ-панели (React SPA) — раздаётся на /console/. Собирается
-      # `chargingStationsAdmin` → npm run build (см. deploy-admin.sh / DEPLOY.md).
+      # Статика админ-панели (React SPA) — раздаётся на /console/.
       - ./chargingStationsAdmin/dist:/usr/share/nginx/html/console:ro
-      # - ./nginx/certs:/etc/nginx/certs:ro   # сертификаты для HTTPS (позже)
+      # TLS (#6): обёртка запуска + сертификаты Let's Encrypt (RW: entrypoint.sh пишет временный self-signed,
+      # если серта ещё нет, чтобы nginx стартовал) + webroot для ACME-challenge (ro). Тома общие с certbot.
+      - ./nginx/entrypoint.sh:/entrypoint.sh:ro
+      - certbot-conf:/etc/letsencrypt
+      - certbot-www:/var/www/certbot:ro
+    # entrypoint.sh: self-signed при отсутствии серта (nginx всегда поднимается) + reload раз в 6ч под
+    # продлённый certbot'ом серт. (В Kubernetes это заботит cert-manager, обёртка не нужна.)
+    command: ["/bin/sh", "/entrypoint.sh"]
     networks: [charging-stations-network]
     depends_on:
       - api-gateway-service
       - keycloak
+
+  # ============================ TLS: Let's Encrypt (#6) ============================
+  # Автопродление сертификата (renew срабатывает, когда до истечения < 30 дней). Проверка раз в 12ч.
+  # ПЕРВЫЙ выпуск — скриптом nginx/init-letsencrypt.sh (webroot HTTP-01 через nginx :80).
+  # В Kubernetes эту роль берёт cert-manager (ClusterIssuer + Certificate), certbot не нужен.
+  certbot:
+    image: certbot/certbot:latest
+    container_name: certbot
+    restart: unless-stopped
+    logging: *default-logging
+    volumes:
+      - certbot-conf:/etc/letsencrypt
+      - certbot-www:/var/www/certbot
+    entrypoint: ["/bin/sh", "-c", "trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot --quiet; sleep 12h & wait $${!}; done"]
+    networks: [charging-stations-network]
 
 networks:
   charging-stations-network:
@@ -800,3 +822,6 @@ volumes:
   station-controll-uploads:
   # Чекпоинты filelog OTel Collector-agent (позиции чтения Docker-логов).
   otelcol-agent-storage:
+  # TLS (#6): сертификаты Let's Encrypt (/etc/letsencrypt) и webroot ACME-challenge (общие nginx↔certbot).
+  certbot-conf:
+  certbot-www:

@@ -17,8 +17,8 @@ import org.springframework.stereotype.Component;
 @ConfigurationProperties(prefix = "app.services.station-controll")
 public class StationClientProperties {
 
-    /** Базовый URL. {@code lb://<service-name>} — балансировка по инстансам из Consul discovery. */
-    private String baseUrl = "lb://station-controll-service";
+    /** Базовый URL station-controll-service. Прямой DNS-адрес (docker/K8s), НЕ {@code lb://}. */
+    private String baseUrl = "http://localhost:8001";
 
     /** Таймаут установки TCP-соединения, мс. */
     private int connectTimeoutMs = 5000;

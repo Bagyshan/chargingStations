@@ -1,7 +1,6 @@
 package charg.ing.stations.config;
 
 import io.netty.channel.ChannelOption;
-import org.springframework.cloud.client.loadbalancer.LoadBalanced;
 import org.springframework.cloud.context.config.annotation.RefreshScope;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -15,17 +14,12 @@ import java.time.Duration;
 public class ConsulConfig {
 
     /**
-     * LoadBalanced билдер: WebClient, построенный из него, умеет резолвить {@code lb://<service>}
-     * в живой инстанс через Consul discovery (reactive load balancer).
-     */
-    @Bean
-    @LoadBalanced
-    public WebClient.Builder loadBalancedWebClientBuilder() {
-        return WebClient.builder();
-    }
-
-    /**
-     * Клиент к station-controll-service «по имени» ({@code lb://station-controll-service}).
+     * Клиент к station-controll-service по прямому DNS-имени
+     * ({@code http://station-controll-service:8001}, задаётся в {@link StationClientProperties}).
+     *
+     * <p>Балансировку берёт на себя инфраструктура (docker DNS сейчас, K8s Service ClusterIP
+     * в будущем) — client-side load balancer через Consul (`lb://`) не используется: station-controll
+     * работает одним инстансом, а остальные сервисы зовут его так же по DNS.
      *
      * <p>{@code @RefreshScope}: при обновлении конфигурации из Consul KV (watch или
      * {@code POST /actuator/refresh}) бин пересоздаётся, подхватывая новые baseUrl/таймауты из
@@ -33,12 +27,11 @@ public class ConsulConfig {
      */
     @Bean
     @RefreshScope
-    public WebClient stationControlWebClient(@LoadBalanced WebClient.Builder loadBalancedBuilder,
-                                             StationClientProperties props) {
+    public WebClient stationControlWebClient(StationClientProperties props) {
         HttpClient httpClient = HttpClient.create()
                 .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, props.getConnectTimeoutMs())
                 .responseTimeout(Duration.ofMillis(props.getReadTimeoutMs()));
-        return loadBalancedBuilder.clone()
+        return WebClient.builder()
                 .baseUrl(props.getBaseUrl())
                 .clientConnector(new ReactorClientHttpConnector(httpClient))
                 .build();

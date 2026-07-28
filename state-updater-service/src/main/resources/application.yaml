@@ -162,11 +162,11 @@ app:
     backup-enabled: true
     sync-batch-size: 100
   services:
-    # Клиент к station-controll ПО ИМЕНИ (Consul discovery + load balancer).
-    # base-url/таймауты можно переопределить из Consul KV (config/state-updater-service/...)
-    # и они подхватятся на лету благодаря @RefreshScope-бину stationControlWebClient.
+    # Клиент к station-controll по прямому DNS-имени (docker/K8s). НЕ lb:// — балансировку
+    # делает инфраструктура (docker DNS / K8s Service). base-url/таймауты переопределяются из
+    # Consul KV (config/state-updater-service/...) и подхватываются на лету (@RefreshScope stationControlWebClient).
     station-controll:
-      base-url: lb://station-controll-service
+      base-url: http://station-controll-service:8001
       connect-timeout-ms: 5000
       read-timeout-ms: 30000
   kafka:
