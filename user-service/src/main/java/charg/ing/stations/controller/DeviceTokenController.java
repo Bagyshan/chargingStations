@@ -17,6 +17,8 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Mono;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.List;
 
 /**
@@ -73,7 +75,7 @@ public class DeviceTokenController {
     public Mono<ResponseEntity<List<String>>> tokensForUser(
             @PathVariable String keycloakId,
             @RequestHeader(value = "X-Internal-Token", required = false) String header) {
-        if (!internalApiToken.equals(header)) {
+        if (!internalTokenValid(header)) {
             return Mono.just(ResponseEntity.status(HttpStatus.FORBIDDEN).build());
         }
         return repository.findByKeycloakId(keycloakId)
@@ -87,11 +89,29 @@ public class DeviceTokenController {
     public Mono<ResponseEntity<Void>> deleteStaleToken(
             @RequestParam("token") String token,
             @RequestHeader(value = "X-Internal-Token", required = false) String header) {
-        if (!internalApiToken.equals(header)) {
+        if (!internalTokenValid(header)) {
             return Mono.just(ResponseEntity.status(HttpStatus.FORBIDDEN).build());
         }
         return repository.deleteByToken(token)
                 .doOnSuccess(v -> log.info("Stale device token pruned"))
                 .thenReturn(ResponseEntity.noContent().build());
+    }
+
+    /**
+     * Проверка общего секрета внутренних endpoint'ов за постоянное время
+     * (без раннего выхода — защита от тайминг-атак). Пустой/незаданный секрет ⇒
+     * блокируем всё, чтобы пустой заголовок случайно не «совпал» с пустым конфигом.
+     */
+    private boolean internalTokenValid(String header) {
+        if (internalApiToken == null || internalApiToken.isBlank()) {
+            log.warn("internal.api-token не задан — внутренние device-token endpoint'ы заблокированы");
+            return false;
+        }
+        if (header == null) {
+            return false;
+        }
+        return MessageDigest.isEqual(
+                internalApiToken.getBytes(StandardCharsets.UTF_8),
+                header.getBytes(StandardCharsets.UTF_8));
     }
 }

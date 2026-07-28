@@ -48,7 +48,7 @@ services:
   user:
     base-url: ${USER_SERVICE_URL:http://localhost:8005}
 internal:
-  api-token: ${INTERNAL_API_TOKEN:charging-internal-2026}
+  api-token: ${INTERNAL_API_TOKEN:}
 
 # Настройки приложения
 app:
