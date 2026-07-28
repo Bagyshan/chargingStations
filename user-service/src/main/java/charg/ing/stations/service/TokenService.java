@@ -1,6 +1,7 @@
 package charg.ing.stations.service;
 
 import charg.ing.stations.dto.response.AuthResponse;
+import charg.ing.stations.exception.InvalidCredentialsException;
 import com.fasterxml.jackson.databind.JsonNode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -9,6 +10,7 @@ import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.BodyInserters;
 import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
 import reactor.core.publisher.Mono;
 
 import java.time.Duration;
@@ -60,6 +62,16 @@ public class TokenService {
                 })
                 .onErrorResume(e -> {
                     log.error("Failed to refresh token: {}", e.getMessage());
+                    // Keycloak отклонил refresh-токен (invalid_grant / истёк) — сессия
+                    // недействительна. Отдаём 401 (через InvalidCredentialsException → 401 в
+                    // GlobalExceptionHandler), чтобы клиент ушёл на повторный вход. Иначе 500
+                    // «замораживает» мобилку на «Сессия истекла» с бесполезной кнопкой «Повторить».
+                    if (e instanceof WebClientResponseException wcre
+                            && wcre.getStatusCode().is4xxClientError()) {
+                        return Mono.error(
+                                new InvalidCredentialsException("Session expired. Please log in again."));
+                    }
+                    // Провайдер недоступен / таймаут / 5xx — временный сбой, сессию не трогаем (500).
                     return Mono.error(new RuntimeException("Token refresh failed: " + e.getMessage()));
                 });
     }
