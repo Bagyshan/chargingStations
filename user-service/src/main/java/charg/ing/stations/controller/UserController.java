@@ -1,6 +1,7 @@
 package charg.ing.stations.controller;
 
 import charg.ing.stations.dto.request.ChangePasswordRequest;
+import charg.ing.stations.dto.request.DeleteAccountRequest;
 import charg.ing.stations.dto.request.UpdateUserRequest;
 import charg.ing.stations.dto.response.ApiResponse;
 import charg.ing.stations.dto.response.UserProfileResponse;
@@ -88,6 +89,22 @@ public class UserController {
                         .ok(ApiResponse.success("Password changed successfully", null)))
                 .doOnSuccess(response -> log.info("Password changed for: {}", email))
                 .doOnError(error -> log.warn("Password change failed for {}: {}", email, error.getMessage()));
+    }
+
+    @Operation(summary = "Удалить собственный аккаунт (безвозвратно, требует пароль)")
+    @PostMapping("/delete-account")
+    public Mono<ResponseEntity<ApiResponse<Object>>> deleteAccount(
+            @Valid @RequestBody DeleteAccountRequest request,
+            @AuthenticationPrincipal Jwt jwt) {
+
+        String email = jwt.getClaimAsString("email");
+        log.info("Account deletion request for user: {}", email);
+
+        return userService.deleteAccount(email, request.getPassword())
+                .thenReturn(ResponseEntity
+                        .ok(ApiResponse.success("Account deleted successfully", null)))
+                .doOnSuccess(response -> log.info("Account deleted for: {}", email))
+                .doOnError(error -> log.warn("Account deletion failed for {}: {}", email, error.getMessage()));
     }
 
     @Operation(summary = "Получить пользователя по ID (только для админов)")

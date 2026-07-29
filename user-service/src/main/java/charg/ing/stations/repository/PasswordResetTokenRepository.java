@@ -17,4 +17,7 @@ public interface PasswordResetTokenRepository extends R2dbcRepository<PasswordRe
 
     @Query("UPDATE password_reset_tokens SET used = true WHERE token = :token")
     Mono<Void> markAsUsed(String token);
+
+    /** Удалить все password-reset токены пользователя (удаление аккаунта). */
+    Mono<Void> deleteByUserId(Long userId);
 }

@@ -15,7 +15,9 @@ import charg.ing.stations.exception.InvalidPasswordException;
 import charg.ing.stations.exception.InvalidTokenException;
 import charg.ing.stations.exception.UserAlreadyExistsException;
 import charg.ing.stations.exception.UserNotFoundException;
+import charg.ing.stations.repository.DeviceTokenRepository;
 import charg.ing.stations.repository.PasswordResetTokenRepository;
+import charg.ing.stations.repository.UserFavoriteStationRepository;
 import charg.ing.stations.repository.UserRepository;
 import charg.ing.stations.repository.VerificationTokenRepository;
 import lombok.RequiredArgsConstructor;
@@ -45,6 +47,8 @@ public class UserService {
     private final KafkaEventProducer kafkaEventProducer;
     private final VerificationTokenRepository verificationTokenRepository;
     private final PasswordResetTokenRepository passwordResetTokenRepository;
+    private final DeviceTokenRepository deviceTokenRepository;
+    private final UserFavoriteStationRepository userFavoriteStationRepository;
     private final PasswordEncoder passwordEncoder;
     private final EmailService emailService;
 
@@ -487,6 +491,66 @@ public class UserService {
                                     log.info("Password changed for user: {}", email);
                                     return Mono.<Void>empty();
                                 }));
+    }
+
+    /**
+     * Безвозвратно удаляет собственный аккаунт пользователя (требование App Store —
+     * возможность самостоятельного удаления). Сначала проверяет пароль через Keycloak
+     * (как в {@link #changePassword}), затем каскадно чистит связанные данные user-service
+     * и удаляет учётку из Keycloak.
+     *
+     * <p>Порядок: сперва дочерние строки и строка users (в транзакции), затем Keycloak.
+     * Если удаление в Keycloak падает — реактивная цепочка завершается ошибкой и
+     * транзакция откатывается (локальные данные не теряются, можно повторить).
+     * Неверный пароль → {@link InvalidPasswordException} (400).
+     */
+    @Transactional
+    public Mono<Void> deleteAccount(String email, String password) {
+        return userRepository.findActiveByEmail(email)
+                .switchIfEmpty(Mono.error(new UserNotFoundException("User not found")))
+                .flatMap(user -> Mono.fromCallable(() -> {
+                                    // Проверяем пароль — пробуем взять токен по нему.
+                                    Keycloak keycloak = keycloakService.getUserKeycloakInstance(email, password);
+                                    try {
+                                        keycloak.tokenManager().getAccessToken();
+                                    } finally {
+                                        keycloak.close();
+                                    }
+                                    return user;
+                                })
+                                .subscribeOn(Schedulers.boundedElastic())
+                                .onErrorResume(e -> {
+                                    log.warn("Delete account: password invalid for {}", email);
+                                    return Mono.error(new InvalidPasswordException("Current password is incorrect"));
+                                })
+                                .flatMap(verified -> {
+                                    Long userId = verified.getId();
+                                    String keycloakId = verified.getKeycloakId();
+
+                                    // 1) Каскадно удаляем связанные данные, потом саму строку users.
+                                    return deviceTokenRepository.deleteByKeycloakId(keycloakId)
+                                            .then(userFavoriteStationRepository.deleteByKeycloakId(keycloakId))
+                                            .then(verificationTokenRepository.deleteByUserId(userId))
+                                            .then(passwordResetTokenRepository.deleteByUserId(userId))
+                                            .then(userRepository.deleteById(userId))
+                                            // 2) Удаляем учётку из Keycloak (внешний вызов — последним).
+                                            .then(Mono.fromRunnable(() -> keycloakService.deleteUser(keycloakId))
+                                                    .subscribeOn(Schedulers.boundedElastic()))
+                                            // 3) Событие для аудита/аналитики (не блокирует удаление).
+                                            .then(Mono.fromRunnable(() -> {
+                                                UserEvent event = UserEvent.builder()
+                                                        .eventType(UserEventType.USER_DELETED)
+                                                        .userId(userId)
+                                                        .keycloakId(keycloakId)
+                                                        .userEmail(email)
+                                                        .timestamp(LocalDateTime.now())
+                                                        .metadata(java.util.Map.of("source", "self-service"))
+                                                        .build();
+                                                kafkaEventProducer.sendUserEvent(event).subscribe();
+                                                log.info("Account deleted (self-service) for user: {}", email);
+                                            }));
+                                }))
+                .then();
     }
 
     public Mono<User> getUserById(Long id) {

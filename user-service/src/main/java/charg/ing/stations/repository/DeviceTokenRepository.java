@@ -31,4 +31,7 @@ public interface DeviceTokenRepository extends R2dbcRepository<DeviceToken, Long
     Mono<Void> deleteByToken(String token);
 
     Mono<Void> deleteByKeycloakIdAndToken(String keycloakId, String token);
+
+    /** Удалить все push-токены устройства пользователя (удаление аккаунта). */
+    Mono<Void> deleteByKeycloakId(String keycloakId);
 }

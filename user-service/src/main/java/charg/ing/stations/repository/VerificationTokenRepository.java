@@ -17,4 +17,7 @@ public interface VerificationTokenRepository extends R2dbcRepository<Verificatio
 
     @Query("UPDATE verification_tokens SET used = true WHERE token = :token")
     Mono<Void> markAsUsed(String token);
+
+    /** Удалить все verification-токены пользователя (удаление аккаунта). */
+    Mono<Void> deleteByUserId(Long userId);
 }

@@ -14,4 +14,7 @@ public interface UserFavoriteStationRepository extends R2dbcRepository<UserFavor
     Mono<Boolean> existsByKeycloakIdAndChargeBoxId(String keycloakId, String chargeBoxId);
 
     Mono<Void> deleteByKeycloakIdAndChargeBoxId(String keycloakId, String chargeBoxId);
+
+    /** Удалить все избранные станции пользователя (удаление аккаунта). */
+    Mono<Void> deleteByKeycloakId(String keycloakId);
 }
