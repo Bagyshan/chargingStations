@@ -53,10 +53,11 @@ public class BookingStateScheduler {
         }
         minutesElapsed = Math.min(minutesElapsed, booking.getMaxBookingMinutes());
 
-//        log.error("Minutes elapsed: {}", minutesElapsed);
-
+        // Минимум 1 минута: 1-я минута оплачена предоплатой при старте, поэтому
+        // текущая стоимость активной брони не бывает нулевой.
+        long billedMinutes = Math.max(minutesElapsed, 1);
         BigDecimal currentCost = booking.getPricePerMinute()
-                .multiply(BigDecimal.valueOf(minutesElapsed));
+                .multiply(BigDecimal.valueOf(billedMinutes));
         int remainingMinutes = booking.getMaxBookingMinutes() - (int) minutesElapsed;
         if (remainingMinutes < 0) remainingMinutes = 0;
 
