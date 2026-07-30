@@ -177,6 +177,45 @@ public class KeycloakService {
     }
 
     /**
+     * Обновляет email (и username — в этой системе username == email) пользователя
+     * в Keycloak и помечает почту подтверждённой. Вызывается только после того, как
+     * пользователь подтвердил владение новым адресом (переход по ссылке из письма).
+     *
+     * @param keycloakId идентификатор пользователя в Keycloak
+     * @param newEmail   новый email
+     */
+    public void updateEmail(String keycloakId, String newEmail) {
+        try {
+            UserResource userResource = realmResource.users().get(keycloakId);
+            UserRepresentation user = userResource.toRepresentation();
+            user.setEmail(newEmail);
+            user.setUsername(newEmail); // username == email (см. createUser)
+            user.setEmailVerified(true);
+            userResource.update(user);
+
+            log.info("Email updated to {} for Keycloak user {}", newEmail, keycloakId);
+        } catch (Exception e) {
+            log.error("Failed to update email for Keycloak user {}", keycloakId, e);
+            throw new RuntimeException("Failed to update email in Keycloak", e);
+        }
+    }
+
+    /**
+     * Проверяет, занят ли email в Keycloak (точное совпадение). Используется как
+     * дополнительная проверка перед сменой почты (помимо проверки в локальной БД).
+     */
+    public boolean emailExists(String email) {
+        try {
+            List<UserRepresentation> found = realmResource.users().searchByEmail(email, true);
+            return found != null && !found.isEmpty();
+        } catch (Exception e) {
+            log.error("Failed to check email existence in Keycloak: {}", email, e);
+            // Не блокируем поток из-за сбоя проверки — решение остаётся за проверкой в БД.
+            return false;
+        }
+    }
+
+    /**
      * Обновляет пароль пользователя в Keycloak.
      * @param keycloakId идентификатор пользователя в Keycloak
      * @param newPassword новый пароль

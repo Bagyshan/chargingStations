@@ -39,6 +39,21 @@ public class EmailService {
         }
     }
 
+    public void sendEmailChangeEmail(String toEmail, String token) {
+        try {
+            String subject = "Подтверждение новой почты для Charging Stations";
+            String confirmUrl = baseUrl + "/api/v1/auth/confirm-email-change?token=" + token;
+
+            String htmlContent = buildEmailChangeHtml(confirmUrl, toEmail);
+
+            sendEmail(toEmail, subject, htmlContent, true);
+            log.info("Email change confirmation sent to: {}", toEmail);
+        } catch (Exception e) {
+            log.error("Failed to send email change confirmation to: {}", toEmail, e);
+            throw new RuntimeException("Failed to send email change confirmation", e);
+        }
+    }
+
     public void sendPasswordResetEmail(String toEmail, String token) {
         try {
             String subject = "Сброс пароля для Charging Stations";
@@ -145,6 +160,59 @@ public class EmailService {
     private String buildPasswordResetEmailHtml(String url) {
         // аналогично
         return "";
+    }
+
+    private String buildEmailChangeHtml(String url, String newEmail) {
+        return """
+                    <!DOCTYPE html>
+                    <html>
+                    <head>
+                        <meta charset="UTF-8">
+                        <style>
+                            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+                            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+                            .header { background-color: #4CAF50; color: white; padding: 10px; text-align: center; }
+                            .content { padding: 20px; background-color: #f9f9f9; }
+                            .button {
+                                display: inline-block;
+                                padding: 12px 24px;
+                                background-color: #4CAF50;
+                                color: white;
+                                text-decoration: none;
+                                border-radius: 4px;
+                                font-weight: bold;
+                            }
+                            .footer { margin-top: 20px; padding-top: 20px; border-top: 1px solid #ddd; font-size: 12px; color: #777; }
+                        </style>
+                    </head>
+                    <body>
+                        <div class="container">
+                            <div class="header">
+                                <h1>Charging Stations</h1>
+                            </div>
+                            <div class="content">
+                                <h2>Смена электронной почты</h2>
+                                <p>Вы указали адрес <b>%s</b> как новую почту для вашего аккаунта.
+                                   Чтобы завершить смену, подтвердите этот адрес:</p>
+                                <p style="text-align: center; margin: 30px 0;">
+                                    <a href="%s" class="button">Подтвердить новую почту</a>
+                                </p>
+                                <p>Или скопируйте ссылку в браузер:</p>
+                                <p style="background-color: #eee; padding: 10px; border-radius: 4px; word-break: break-all;">
+                                    %s
+                                </p>
+                                <p>Ссылка действительна в течение 24 часов. Пока вы не перейдёте по ней,
+                                   почта аккаунта не изменится и вход выполняется по старому адресу.</p>
+                                <p>Если вы не запрашивали смену почты, просто проигнорируйте это письмо.</p>
+                            </div>
+                            <div class="footer">
+                                <p>© 2024 Charging Stations. Все права защищены.</p>
+                                <p>Это письмо отправлено автоматически, пожалуйста, не отвечайте на него.</p>
+                            </div>
+                        </div>
+                    </body>
+                    </html>
+                    """.formatted(newEmail, url, url);
     }
 
     private String buildStationFaultedHtml(Object chargeBoxId, Object connectorId, Object status, Object errorCode) {

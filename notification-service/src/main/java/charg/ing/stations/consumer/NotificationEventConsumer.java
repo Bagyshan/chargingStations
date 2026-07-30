@@ -120,6 +120,14 @@ public class NotificationEventConsumer {
                 }
                 emailService.sendVerificationEmail(email, token);
                 break;
+            case EMAIL_CHANGE_REQUESTED:
+                if (token == null) {
+                    log.error("Missing token for EMAIL_CHANGE_REQUESTED, userId={}", event.getUserId());
+                    return;
+                }
+                // email здесь = НОВЫЙ адрес (user-service шлёт userEmail=newEmail).
+                emailService.sendEmailChangeEmail(email, token);
+                break;
             case PASSWORD_RESET_REQUESTED:
                 if (token == null) {
                     log.error("Missing token for PASSWORD_RESET_REQUESTED, userId={}", event.getUserId());

@@ -37,9 +37,14 @@ public class VerificationToken {
     @Column("created_at")
     private LocalDateTime createdAt;
 
+    /** Целевой адрес для смены почты (заполняется только у токенов EMAIL_CHANGE). */
+    @Column("new_email")
+    private String newEmail;
+
     public enum TokenType {
         EMAIL_VERIFICATION,
         PHONE_VERIFICATION,
-        PASSWORD_RESET
+        PASSWORD_RESET,
+        EMAIL_CHANGE
     }
 }

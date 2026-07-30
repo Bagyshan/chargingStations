@@ -1,9 +1,11 @@
 package charg.ing.stations.controller;
 
+import charg.ing.stations.dto.request.ChangeEmailRequest;
 import charg.ing.stations.dto.request.ChangePasswordRequest;
 import charg.ing.stations.dto.request.DeleteAccountRequest;
 import charg.ing.stations.dto.request.UpdateUserRequest;
 import charg.ing.stations.dto.response.ApiResponse;
+import charg.ing.stations.dto.response.EmailChangeStatusResponse;
 import charg.ing.stations.dto.response.UserProfileResponse;
 import charg.ing.stations.service.UserService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -44,10 +46,15 @@ public class UserController {
     public Mono<ResponseEntity<ApiResponse<UserProfileResponse>>> getProfile(
             @AuthenticationPrincipal Jwt jwt) {
 
+        // Резолвим по keycloakId (sub) — устойчиво к смене email: старый токен
+        // может ещё нести прежний email, но sub всегда указывает на актуальную
+        // запись (в ней уже новый адрес). Fallback на email — на всякий случай.
+        String keycloakId = jwt.getSubject();
         String email = jwt.getClaimAsString("email");
-        log.info("Profile request for user: {}", email);
+        log.info("Profile request for user (sub={}, email={})", keycloakId, email);
 
-        return userService.getUserByEmail(email)
+        return userService.getUserByKeycloakId(keycloakId)
+                .onErrorResume(e -> userService.getUserByEmail(email))
                 .map(user -> ResponseEntity
                         .ok(ApiResponse.success(
                                 "Profile retrieved successfully",
@@ -62,10 +69,12 @@ public class UserController {
             @Valid @RequestBody UpdateUserRequest request,
             @AuthenticationPrincipal Jwt jwt) {
 
+        String keycloakId = jwt.getSubject();
         String email = jwt.getClaimAsString("email");
         log.info("Profile update request for user: {}", email);
 
-        return userService.getUserByEmail(email)
+        return userService.getUserByKeycloakId(keycloakId)
+                .onErrorResume(e -> userService.getUserByEmail(email))
                 .flatMap(user -> userService.updateUser(user.getId(), request))
                 .map(updatedUser -> ResponseEntity
                         .ok(ApiResponse.success(
@@ -89,6 +98,35 @@ public class UserController {
                         .ok(ApiResponse.success("Password changed successfully", null)))
                 .doOnSuccess(response -> log.info("Password changed for: {}", email))
                 .doOnError(error -> log.warn("Password change failed for {}: {}", email, error.getMessage()));
+    }
+
+    @Operation(summary = "Запросить смену email (ссылка подтверждения придёт на новый адрес)")
+    @PostMapping("/email/change")
+    public Mono<ResponseEntity<ApiResponse<Object>>> changeEmail(
+            @Valid @RequestBody ChangeEmailRequest request,
+            @AuthenticationPrincipal Jwt jwt) {
+
+        String keycloakId = jwt.getSubject();
+        log.info("Email change request (sub={}) -> {}", keycloakId, request.getNewEmail());
+
+        return userService.initiateEmailChange(keycloakId, request.getNewEmail(), request.getPassword())
+                .thenReturn(ResponseEntity
+                        .ok(ApiResponse.success(
+                                "Подтвердите смену почты по ссылке, отправленной на новый адрес", null)))
+                .doOnSuccess(response -> log.info("Email change initiated (sub={})", keycloakId))
+                .doOnError(error -> log.warn("Email change failed (sub={}): {}", keycloakId, error.getMessage()));
+    }
+
+    @Operation(summary = "Статус смены email (текущий + ожидающий подтверждения адрес)")
+    @GetMapping("/email/change/status")
+    public Mono<ResponseEntity<ApiResponse<EmailChangeStatusResponse>>> emailChangeStatus(
+            @AuthenticationPrincipal Jwt jwt) {
+
+        String keycloakId = jwt.getSubject();
+        return userService.getEmailChangeStatus(keycloakId)
+                .map(status -> ResponseEntity
+                        .ok(ApiResponse.success("Email change status retrieved", status)))
+                .doOnError(error -> log.error("Failed to get email change status (sub={})", keycloakId, error));
     }
 
     @Operation(summary = "Удалить собственный аккаунт (безвозвратно, требует пароль)")

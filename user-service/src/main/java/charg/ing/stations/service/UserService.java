@@ -2,6 +2,7 @@ package charg.ing.stations.service;
 
 import charg.ing.stations.dto.request.*;
 import charg.ing.stations.dto.response.AuthResponse;
+import charg.ing.stations.dto.response.EmailChangeStatusResponse;
 import charg.ing.stations.entity.PasswordResetToken;
 import charg.ing.stations.entity.User;
 import charg.ing.stations.entity.VerificationToken;
@@ -335,6 +336,174 @@ public class UserService {
                             });
                 })
                 .then();
+    }
+
+    // ─────────────────────────── Смена email ────────────────────────────────
+
+    /**
+     * Инициирует смену почты (флоу «подтвердить → потом сменить»). Проверяет
+     * текущий пароль (через Keycloak), что новый адрес свободен, и отправляет
+     * письмо со ссылкой подтверждения НА НОВЫЙ адрес. Сама почта в БД/Keycloak
+     * НЕ меняется до подтверждения ({@link #confirmEmailChange}). Пользователь
+     * определяется по keycloakId (sub из JWT) — устойчиво к тому, что email в
+     * токене может быть ещё старым.
+     *
+     * Ошибки: неверный пароль → {@link InvalidPasswordException} (400);
+     * адрес занят/совпадает с текущим → {@link UserAlreadyExistsException} (409).
+     */
+    @Transactional
+    public Mono<Void> initiateEmailChange(String keycloakId, String rawNewEmail, String password) {
+        final String newEmail = rawNewEmail == null ? "" : rawNewEmail.trim().toLowerCase();
+        if (newEmail.isEmpty() || !newEmail.contains("@")) {
+            return Mono.error(new IllegalArgumentException("Invalid email address"));
+        }
+        return userRepository.findByKeycloakId(keycloakId)
+                .switchIfEmpty(Mono.error(new UserNotFoundException("User not found")))
+                .flatMap(user -> {
+                    if (newEmail.equalsIgnoreCase(user.getEmail())) {
+                        return Mono.error(new UserAlreadyExistsException(
+                                "New email must differ from the current one"));
+                    }
+                    return userRepository.existsByEmail(newEmail)
+                            .flatMap(exists -> {
+                                if (Boolean.TRUE.equals(exists)) {
+                                    return Mono.error(new UserAlreadyExistsException("Email already in use"));
+                                }
+                                // Блокирующие вызовы Keycloak (проверка пароля + занятости) — на boundedElastic.
+                                return Mono.fromCallable(() -> {
+                                            Keycloak keycloak = keycloakService.getUserKeycloakInstance(user.getEmail(), password);
+                                            try {
+                                                keycloak.tokenManager().getAccessToken();
+                                            } finally {
+                                                keycloak.close();
+                                            }
+                                            return keycloakService.emailExists(newEmail);
+                                        })
+                                        .subscribeOn(Schedulers.boundedElastic())
+                                        .onErrorResume(e -> {
+                                            log.warn("Email change: current password invalid for {}", user.getEmail());
+                                            return Mono.error(new InvalidPasswordException("Current password is incorrect"));
+                                        })
+                                        .flatMap(existsInKc -> {
+                                            if (Boolean.TRUE.equals(existsInKc)) {
+                                                return Mono.error(new UserAlreadyExistsException("Email already in use"));
+                                            }
+                                            return createEmailChangeToken(user, newEmail);
+                                        });
+                            });
+                });
+    }
+
+    private Mono<Void> createEmailChangeToken(User user, String newEmail) {
+        // Гасим прежний активный токен смены почты — «в ожидании» всегда один адрес.
+        return verificationTokenRepository.findActiveByUserIdAndType(
+                        user.getId(), VerificationToken.TokenType.EMAIL_CHANGE)
+                .flatMap(old -> verificationTokenRepository.markAsUsed(old.getToken()))
+                .then(Mono.defer(() -> {
+                    String token = UUID.randomUUID().toString();
+                    VerificationToken vt = VerificationToken.builder()
+                            .token(token)
+                            .userId(user.getId())
+                            .tokenType(VerificationToken.TokenType.EMAIL_CHANGE)
+                            .newEmail(newEmail)
+                            .expiresAt(LocalDateTime.now().plusHours(24))
+                            .used(false)
+                            .createdAt(LocalDateTime.now())
+                            .build();
+                    return verificationTokenRepository.save(vt)
+                            .flatMap(saved -> {
+                                log.info("Email change requested for user {} -> {}", user.getEmail(), newEmail);
+                                // Письмо уходит НА НОВЫЙ адрес — так пользователь подтверждает владение им.
+                                UserEvent event = UserEvent.builder()
+                                        .eventType(UserEventType.EMAIL_CHANGE_REQUESTED)
+                                        .userId(user.getId())
+                                        .userEmail(newEmail)
+                                        .timestamp(LocalDateTime.now())
+                                        .metadata(java.util.Map.of("token", token, "oldEmail", user.getEmail()))
+                                        .build();
+                                return kafkaEventProducer.sendNotificationEvent(event);
+                            });
+                }));
+    }
+
+    /**
+     * Подтверждает смену почты по токену из письма: применяет новый email в
+     * Keycloak (username+email+emailVerified) и в БД, помечает токен использованным.
+     * Токен неверный/просрочен/чужого типа → {@link InvalidTokenException}.
+     */
+    @Transactional
+    public Mono<Void> confirmEmailChange(String token) {
+        return verificationTokenRepository.findByToken(token)
+                .switchIfEmpty(Mono.error(new InvalidTokenException("Invalid or used token")))
+                .flatMap(vt -> {
+                    if (vt.getTokenType() != VerificationToken.TokenType.EMAIL_CHANGE) {
+                        return Mono.error(new InvalidTokenException("Token is not for email change"));
+                    }
+                    if (Boolean.TRUE.equals(vt.getUsed())) {
+                        return Mono.error(new InvalidTokenException("Token already used"));
+                    }
+                    if (vt.getExpiresAt().isBefore(LocalDateTime.now())) {
+                        return Mono.error(new InvalidTokenException("Token expired"));
+                    }
+                    final String newEmail = vt.getNewEmail();
+                    if (newEmail == null || newEmail.isBlank()) {
+                        return Mono.error(new InvalidTokenException("Token has no target email"));
+                    }
+                    return userRepository.existsByEmail(newEmail)
+                            .flatMap(taken -> {
+                                if (Boolean.TRUE.equals(taken)) {
+                                    return Mono.error(new UserAlreadyExistsException("Email already in use"));
+                                }
+                                return userRepository.findById(vt.getUserId())
+                                        .switchIfEmpty(Mono.error(new UserNotFoundException("User not found")))
+                                        .flatMap(user -> Mono.fromRunnable(
+                                                        () -> keycloakService.updateEmail(user.getKeycloakId(), newEmail))
+                                                .subscribeOn(Schedulers.boundedElastic())
+                                                .onErrorMap(e -> new RuntimeException(
+                                                        "Failed to update email in Keycloak", e))
+                                                .then(Mono.defer(() -> {
+                                                    String oldEmail = user.getEmail();
+                                                    user.setEmail(newEmail);
+                                                    user.setEmailVerified(true);
+                                                    user.setUpdatedAt(LocalDateTime.now());
+                                                    return verificationTokenRepository.markAsUsed(token)
+                                                            .then(userRepository.save(user))
+                                                            .doOnSuccess(saved -> {
+                                                                log.info("Email changed {} -> {} for user {}",
+                                                                        oldEmail, newEmail, saved.getId());
+                                                                UserEvent event = UserEvent.builder()
+                                                                        .eventType(UserEventType.USER_UPDATED)
+                                                                        .userId(saved.getId())
+                                                                        .keycloakId(saved.getKeycloakId())
+                                                                        .userEmail(saved.getEmail())
+                                                                        .timestamp(LocalDateTime.now())
+                                                                        .metadata(java.util.Map.of(
+                                                                                "oldEmail", oldEmail,
+                                                                                "newEmail", newEmail,
+                                                                                "reason", "EMAIL_CHANGED"))
+                                                                        .build();
+                                                                kafkaEventProducer.sendUserEvent(event).subscribe();
+                                                            });
+                                                })));
+                            });
+                })
+                .then();
+    }
+
+    /** Текущий email + ожидающий подтверждения адрес (для поллинга в приложении). */
+    public Mono<EmailChangeStatusResponse> getEmailChangeStatus(String keycloakId) {
+        return userRepository.findByKeycloakId(keycloakId)
+                .switchIfEmpty(Mono.error(new UserNotFoundException("User not found")))
+                .flatMap(user -> verificationTokenRepository
+                        .findActiveByUserIdAndType(user.getId(), VerificationToken.TokenType.EMAIL_CHANGE)
+                        .map(t -> new EmailChangeStatusResponse(user.getEmail(), t.getNewEmail()))
+                        .defaultIfEmpty(new EmailChangeStatusResponse(user.getEmail(), null)));
+    }
+
+    /** Пользователь по keycloakId (sub из JWT). Устойчиво к смене email. */
+    public Mono<User> getUserByKeycloakId(String keycloakId) {
+        return userRepository.findByKeycloakId(keycloakId)
+                .switchIfEmpty(Mono.error(new UserNotFoundException("User not found")));
     }
 
     /**

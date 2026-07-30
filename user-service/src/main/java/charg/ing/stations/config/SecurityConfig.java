@@ -46,6 +46,7 @@ public class SecurityConfig {
                                 "/api/v1/auth/password/reset-request").permitAll()
                         .pathMatchers(HttpMethod.GET,
                                 "/api/v1/auth/verify-email",
+                                "/api/v1/auth/confirm-email-change",
                                 "/swagger-ui.html",
                                 "/swagger-ui/**",
                                 "/v3/api-docs/**",

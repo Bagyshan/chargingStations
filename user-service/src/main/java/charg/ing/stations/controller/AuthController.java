@@ -195,6 +195,28 @@ public class AuthController {
                 .doOnError(error -> log.warn("Email verification failed: {}", error.getMessage()));
     }
 
+    @Operation(summary = "Подтверждение смены email (ссылка из письма на новый адрес)")
+    @ApiResponses(value = {
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "200",
+                    description = "Email успешно изменён"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "400",
+                    description = "Недействительный или просроченный токен")
+    })
+    @GetMapping("/confirm-email-change")
+    public Mono<ResponseEntity<ApiResponse<Object>>> confirmEmailChange(
+            @RequestParam String token) {
+
+        log.info("Email change confirmation attempt with token");
+
+        return userService.confirmEmailChange(token)
+                .thenReturn(ResponseEntity
+                        .ok(ApiResponse.success("Email changed successfully", null)))
+                .doOnSuccess(response -> log.info("Email change confirmed successfully"))
+                .doOnError(error -> log.warn("Email change confirmation failed: {}", error.getMessage()));
+    }
+
     @Operation(summary = "Запрос повторной отправки email для подтверждения")
     @ApiResponses(value = {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
