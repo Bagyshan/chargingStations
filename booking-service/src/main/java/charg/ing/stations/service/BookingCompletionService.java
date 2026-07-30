@@ -39,23 +39,29 @@ public class BookingCompletionService {
                     }
 
                     Instant now = Instant.now();
+                    long elapsed = Duration.between(booking.getStartedAt(), now).toMinutes();
+                    // Минимум 1 минута: бронь всегда стоит хотя бы 1 минуту.
+                    int totalMinutes = (int) Math.max(elapsed, 1);
+                    BigDecimal price = booking.getPricePerMinute();
+                    BigDecimal fullSum = price.multiply(BigDecimal.valueOf(totalMinutes));
+                    // 1 минута уже списана при старте — добираем только остаток.
+                    BigDecimal deltaSum = price.multiply(BigDecimal.valueOf(totalMinutes - 1L));
+
                     booking.setStatus("COMPLETED");
                     booking.setEndedAt(now);
+                    booking.setTotalMinutes(totalMinutes);
+                    booking.setTotalSum(fullSum);
 
-                    BookingEvent bookingEvent = sendCompletionEvent(booking, now);
-
-                    booking.setTotalSum(bookingEvent.getData().getCurrentCost());
-                    booking.setTotalMinutes(bookingEvent.getData().getMinutesElapsed());
-
-                    BookingEventMessage event = buildStopEvent(booking);
-//                    bookingEventProducer.sendBookingEvent(event);
+                    // Событие для WS/истории (полная сумма для отображения).
+                    sendCompletionEvent(booking, now, totalMinutes, fullSum);
+                    // Событие для payment-service — добор остатка (может быть 0).
+                    BookingEventMessage stopEvent = buildStopEvent(booking, totalMinutes, deltaSum);
 
                     return bookingRepository.save(booking)
                             .flatMap(saved ->
-                                    bookingEventProducer.sendBookingEvent(event)
+                                    bookingEventProducer.sendBookingEvent(stopEvent)
                                             .thenReturn(saved)
                             )
-//                            .doOnSuccess(saved -> sendCompletionEvent(saved, now))
                             .map(saved -> new BookingCompleteResponse(
                                     saved.getBookingId(),
                                     saved.getStatus(),
@@ -68,28 +74,16 @@ public class BookingCompletionService {
                 });
     }
 
-    private BookingEvent sendCompletionEvent(BookingEntity booking, Instant completedAt) {
-        Instant now = Instant.now();
-        // Вычисляем текущие метрики
-        long minutesElapsed = 0;
-//        if (booking.getStartedAt() != null) {
-//        }
-        minutesElapsed = Duration.between(booking.getStartedAt(), now).toMinutes();
-//        minutesElapsed = Math.min(minutesElapsed, booking.getMaxBookingMinutes());
-
-//        log.error("Minutes elapsed: {}", minutesElapsed);
-
-        BigDecimal currentCost = booking.getPricePerMinute()
-                .multiply(BigDecimal.valueOf(minutesElapsed));
-        int remainingMinutes = booking.getMaxBookingMinutes() - (int) minutesElapsed;
+    private void sendCompletionEvent(BookingEntity booking, Instant completedAt,
+                                     int totalMinutes, BigDecimal currentCost) {
+        int remainingMinutes = booking.getMaxBookingMinutes() - totalMinutes;
         if (remainingMinutes < 0) remainingMinutes = 0;
-
 
         BookingEvent.EventData data = BookingEvent.EventData.builder()
                 .stationId(booking.getStationId())
                 .connectorId(booking.getConnectorId())
                 .pricePerMinute(booking.getPricePerMinute())
-                .minutesElapsed((int) minutesElapsed)
+                .minutesElapsed(totalMinutes)
                 .currentCost(currentCost)
                 .maxBookingMinutes(booking.getMaxBookingMinutes())
                 .remainingBookingMinutes(remainingMinutes)
@@ -107,21 +101,20 @@ public class BookingCompletionService {
                 .build();
 
         kafkaTemplate.send("booking.state", event.getReservationId().toString(), event);
-
-        return event;
     }
 
-    private BookingEventMessage buildStopEvent(BookingEntity booking) {
-        long minutes = Duration.between(booking.getStartedAt(), booking.getEndedAt()).toMinutes();
-        int totalMinutes = (int) Math.max(minutes, 1); // минимум 1 минута
-        BigDecimal totalSum = booking.getPricePerMinute().multiply(BigDecimal.valueOf(totalMinutes));
+    /**
+     * STOP_RESERVATION для payment-service. {@code debitSum} — сумма к дополнительному
+     * списанию (полная стоимость минус уже оплаченная при старте 1 минута).
+     */
+    private BookingEventMessage buildStopEvent(BookingEntity booking, int totalMinutes, BigDecimal debitSum) {
         return BookingEventMessage.builder()
                 .bookingId(booking.getBookingId())
                 .stationId(booking.getStationId())
                 .connectorId(booking.getConnectorId())
                 .userId(booking.getUserId())
                 .eventType(BookingEventMessage.EventType.STOP_RESERVATION)
-                .totalSum(totalSum)
+                .totalSum(debitSum)
                 .totalMinutes(totalMinutes)
                 .startedAt(booking.getStartedAt())
                 .endedAt(booking.getEndedAt())

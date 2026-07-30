@@ -178,7 +178,7 @@ public class BookingService {
                     } else {
                         errorMessage = "Internal server error: " + e.getMessage();
                     }
-                    // Сохраняем FAILED-запись без ответов от сервисов
+                    // Сохраняем FAILED-запись (для учёта); клиент её пользователю не показывает.
                     BookingEntity failedBooking = BookingEntity.builder()
                             .userId(userId)
                             .stationId(request.stationId())
@@ -221,6 +221,8 @@ public class BookingService {
             errorMsg.append("Unknown error");
         }
 
+        // Несостоявшуюся бронь СОХРАНЯЕМ в БД (для учёта/аналитики). Пользователю в
+        // приложении FAILED-брони не показываются (фильтр на клиенте).
         BookingEntity failedBooking = BookingEntity.builder()
                 .userId(userId)
                 .stationId(request.stationId())
@@ -242,15 +244,6 @@ public class BookingService {
                         .endedAt(saved.getEndedAt())
                         .errorMessage(errorMsg.toString())
                         .build());
-//        return bookingRepository.save(failedBooking)
-//                .map(saved -> new BookingResponse(
-//                        saved.getBookingId(),
-//                        saved.getStatus(),
-//                        saved.getMaxBookingMinutes(),
-//                        saved.getStartedAt(),
-//                        saved.getRemainingBookingEndTime(),
-//                        saved.getEndedAt()
-//                ));
     }
 
     private void sendCreatedEvent(BookingEntity booking) {
@@ -274,16 +267,16 @@ public class BookingService {
     }
 
     private BookingEventMessage buildStartEvent(BookingEntity booking) {
-//        BigDecimal totalSum = booking.getPricePerMinute()
-//                .multiply(BigDecimal.valueOf(booking.getMaxBookingMinutes()));
+        // Списываем стоимость 1 минуты СРАЗУ при старте брони (предоплата) — чтобы
+        // «0-минутные» брони не были бесплатными. Остаток добираем при завершении.
         return BookingEventMessage.builder()
                 .bookingId(booking.getBookingId())
                 .stationId(booking.getStationId())
                 .connectorId(booking.getConnectorId())
                 .userId(booking.getUserId())
                 .eventType(BookingEventMessage.EventType.START_RESERVATION)
-//                .totalSum(totalSum)
-//                .totalMinutes(booking.getMaxBookingMinutes())
+                .totalSum(booking.getPricePerMinute()) // 1 минута вперёд
+                .totalMinutes(1)
                 .startedAt(booking.getStartedAt())
                 .endedAt(booking.getEndedAt())
                 .build();

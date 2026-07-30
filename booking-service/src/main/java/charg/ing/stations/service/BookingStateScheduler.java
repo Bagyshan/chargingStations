@@ -90,15 +90,18 @@ public class BookingStateScheduler {
         if (completed) {
             // Итоговые суммы для истории и расчёта (как при ручном завершении).
             int totalMinutes = (int) Math.max(minutesElapsed, 1);
-            BigDecimal totalSum = booking.getPricePerMinute().multiply(BigDecimal.valueOf(totalMinutes));
+            BigDecimal price = booking.getPricePerMinute();
+            BigDecimal fullSum = price.multiply(BigDecimal.valueOf(totalMinutes));
+            // 1 минута уже оплачена при старте — payment-service добирает только остаток.
+            BigDecimal deltaSum = price.multiply(BigDecimal.valueOf(totalMinutes - 1L));
             booking.setTotalMinutes(totalMinutes);
-            booking.setTotalSum(totalSum);
+            booking.setTotalSum(fullSum);
 
-            BookingEventMessage stopEvent = buildStopEvent(booking, totalMinutes, totalSum);
+            BookingEventMessage stopEvent = buildStopEvent(booking, totalMinutes, deltaSum);
 
             action = bookingRepository.save(booking)
                     .then(Mono.fromRunnable(() -> sendEvent(event)))
-                    // STOP_RESERVATION → payment-service списывает оплату за прошедшее время.
+                    // STOP_RESERVATION → payment-service списывает остаток за прошедшее время.
                     .then(bookingEventProducer.sendBookingEvent(stopEvent));
         } else {
             action = Mono.fromRunnable(() -> sendEvent(event));

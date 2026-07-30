@@ -26,8 +26,16 @@ public class BookingEventsConsumer {
         log.info("Received booking event: {}", event);
 
         if (event.getEventType() == BookingEventMessage.EventType.START_RESERVATION) {
+            // Предоплата за 1 минуту при старте брони (защита от «0-минутных» броней).
+            final BigDecimal upfront = event.getTotalSum() != null
+                    ? event.getTotalSum() : BigDecimal.ZERO;
             balanceRepository.findByUserId(event.getUserId())
                     .flatMap(balance -> {
+                        BigDecimal newBalance = balance.getBalance().subtract(upfront);
+                        if (newBalance.compareTo(BigDecimal.ZERO) < 0) {
+                            newBalance = BigDecimal.ZERO;
+                        }
+                        balance.setBalance(newBalance);
                         balance.setBooking(true);
                         return balanceRepository.save(balance);
                     })
@@ -36,7 +44,18 @@ public class BookingEventsConsumer {
                         return Mono.empty();
                     }))
                     .subscribe(
-                            saved -> log.info("Balance updated for user {}: new balance = {}", event.getUserId(), saved.getBalance()),
+                            saved -> {
+                                log.info("Booking start prepay -{} for user {}: new balance = {}",
+                                        upfront, event.getUserId(), saved.getBalance());
+                                if (upfront.compareTo(BigDecimal.ZERO) > 0) {
+                                    Map<String, Object> payload = new HashMap<>();
+                                    payload.put("debit", upfront);
+                                    payload.put("newBalance", saved.getBalance());
+                                    payload.put("reason", "BOOKING_PREPAY");
+                                    auditPublisher.publishBalance("DEBIT", event.getUserId(), "INFO",
+                                            "Booking prepay -" + upfront, payload);
+                                }
+                            },
                             error -> log.error("Error updating balance for user {}: {}", event.getUserId(), error.getMessage())
                     );
         }
