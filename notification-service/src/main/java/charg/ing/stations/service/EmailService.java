@@ -26,7 +26,7 @@ public class EmailService {
 
     public void sendVerificationEmail(String toEmail, String token) {
         try {
-            String subject = "Подтверждение email для Charging Stations";
+            String subject = "Подтверждение email · BatEnergy";
             String verificationUrl = baseUrl + "/api/v1/auth/verify-email?token=" + token;
 
             String htmlContent = buildVerificationEmailHtml(verificationUrl);
@@ -41,7 +41,7 @@ public class EmailService {
 
     public void sendEmailChangeEmail(String toEmail, String token) {
         try {
-            String subject = "Подтверждение новой почты для Charging Stations";
+            String subject = "Подтверждение новой почты · BatEnergy";
             String confirmUrl = baseUrl + "/api/v1/auth/confirm-email-change?token=" + token;
 
             String htmlContent = buildEmailChangeHtml(confirmUrl, toEmail);
@@ -106,55 +106,48 @@ public class EmailService {
         mailSender.send(message);
     }
 
+    // Фирменная «шапка» письма: логотип-надпись на бренд-градиенте (amber → violet).
+    // Без символа '%' в CSS — иначе поломается String.formatted().
+    private static final String BRAND_HEADER = """
+                <div style="background-color:#5A2E5C;background-image:linear-gradient(135deg,#FFB43A,#FFA20D,#8E4368,#5A2E5C);padding:30px 24px;text-align:center;">
+                    <div style="font-size:26px;font-weight:800;color:#ffffff;letter-spacing:0.5px;">BatEnergy</div>
+                    <div style="font-size:12px;color:#ffffff;opacity:0.9;margin-top:4px;">Зарядные станции для электромобилей</div>
+                </div>
+            """;
+
+    private static final String BRAND_FOOTER = """
+                <div style="padding:20px 30px;border-top:1px solid #eee;font-size:12px;color:#999;">
+                    <p style="margin:0 0 4px;">© 2026 BatEnergy. Все права защищены.</p>
+                    <p style="margin:0;">Письмо отправлено автоматически — пожалуйста, не отвечайте на него.</p>
+                </div>
+            """;
+
     private String buildVerificationEmailHtml(String url) {
         return """
-                    <!DOCTYPE html>
-                    <html>
-                    <head>
-                        <meta charset="UTF-8">
-                        <style>
-                            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-                            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-                            .header { background-color: #4CAF50; color: white; padding: 10px; text-align: center; }
-                            .content { padding: 20px; background-color: #f9f9f9; }
-                            .button {
-                                display: inline-block;
-                                padding: 12px 24px;
-                                background-color: #4CAF50;
-                                color: white;
-                                text-decoration: none;
-                                border-radius: 4px;
-                                font-weight: bold;
-                            }
-                            .footer { margin-top: 20px; padding-top: 20px; border-top: 1px solid #ddd; font-size: 12px; color: #777; }
-                        </style>
-                    </head>
-                    <body>
-                        <div class="container">
-                            <div class="header">
-                                <h1>Charging Stations</h1>
-                            </div>
-                            <div class="content">
-                                <h2>Подтверждение email</h2>
-                                <p>Спасибо за регистрацию! Для завершения регистрации, пожалуйста, подтвердите ваш email:</p>
-                                <p style="text-align: center; margin: 30px 0;">
-                                    <a href="%s" class="button">Подтвердить Email</a>
+                <!DOCTYPE html>
+                <html lang="ru">
+                <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+                <body style="margin:0;padding:0;background:#f5f6f8;font-family:Arial,Helvetica,sans-serif;color:#333;">
+                    <div style="padding:24px 12px;">
+                        <div style="max-width:600px;margin:0 auto;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #ececf0;">
+                            %s
+                            <div style="padding:30px 30px 6px;">
+                                <h2 style="color:#5A2E5C;margin:0 0 14px;font-size:21px;">Подтверждение email</h2>
+                                <p style="margin:0 0 14px;font-size:15px;line-height:1.6;color:#444;">Спасибо за регистрацию в BatEnergy! Чтобы завершить её, подтвердите ваш адрес электронной почты:</p>
+                                <p style="text-align:center;margin:30px 0;">
+                                    <a href="%s" style="display:inline-block;padding:14px 32px;background-color:#FFA20D;color:#2A0E33;text-decoration:none;border-radius:12px;font-weight:800;font-size:15px;">Подтвердить email</a>
                                 </p>
-                                <p>Или скопируйте ссылку в браузер:</p>
-                                <p style="background-color: #eee; padding: 10px; border-radius: 4px; word-break: break-all;">
-                                    %s
-                                </p>
-                                <p>Ссылка действительна в течение 24 часов.</p>
-                                <p>Если вы не регистрировались, просто проигнорируйте это письмо.</p>
+                                <p style="margin:0 0 8px;font-size:14px;color:#666;">Или скопируйте ссылку в браузер:</p>
+                                <p style="background:#f3eaf3;padding:12px 14px;border-radius:10px;word-break:break-all;color:#5A2E5C;font-size:13px;margin:0 0 18px;">%s</p>
+                                <p style="font-size:13px;color:#888;margin:0 0 6px;">Ссылка действительна в течение 24 часов.</p>
+                                <p style="font-size:13px;color:#888;margin:0 0 16px;">Если вы не регистрировались в BatEnergy, просто проигнорируйте это письмо.</p>
                             </div>
-                            <div class="footer">
-                                <p>© 2024 Charging Stations. Все права защищены.</p>
-                                <p>Это письмо отправлено автоматически, пожалуйста, не отвечайте на него.</p>
-                            </div>
+                            %s
                         </div>
-                    </body>
-                    </html>
-                    """.formatted(url, url);
+                    </div>
+                </body>
+                </html>
+                """.formatted(BRAND_HEADER, url, url, BRAND_FOOTER);
     }
 
     private String buildPasswordResetEmailHtml(String url) {
@@ -164,55 +157,30 @@ public class EmailService {
 
     private String buildEmailChangeHtml(String url, String newEmail) {
         return """
-                    <!DOCTYPE html>
-                    <html>
-                    <head>
-                        <meta charset="UTF-8">
-                        <style>
-                            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-                            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-                            .header { background-color: #4CAF50; color: white; padding: 10px; text-align: center; }
-                            .content { padding: 20px; background-color: #f9f9f9; }
-                            .button {
-                                display: inline-block;
-                                padding: 12px 24px;
-                                background-color: #4CAF50;
-                                color: white;
-                                text-decoration: none;
-                                border-radius: 4px;
-                                font-weight: bold;
-                            }
-                            .footer { margin-top: 20px; padding-top: 20px; border-top: 1px solid #ddd; font-size: 12px; color: #777; }
-                        </style>
-                    </head>
-                    <body>
-                        <div class="container">
-                            <div class="header">
-                                <h1>Charging Stations</h1>
-                            </div>
-                            <div class="content">
-                                <h2>Смена электронной почты</h2>
-                                <p>Вы указали адрес <b>%s</b> как новую почту для вашего аккаунта.
-                                   Чтобы завершить смену, подтвердите этот адрес:</p>
-                                <p style="text-align: center; margin: 30px 0;">
-                                    <a href="%s" class="button">Подтвердить новую почту</a>
+                <!DOCTYPE html>
+                <html lang="ru">
+                <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+                <body style="margin:0;padding:0;background:#f5f6f8;font-family:Arial,Helvetica,sans-serif;color:#333;">
+                    <div style="padding:24px 12px;">
+                        <div style="max-width:600px;margin:0 auto;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #ececf0;">
+                            %s
+                            <div style="padding:30px 30px 6px;">
+                                <h2 style="color:#5A2E5C;margin:0 0 14px;font-size:21px;">Смена электронной почты</h2>
+                                <p style="margin:0 0 14px;font-size:15px;line-height:1.6;color:#444;">Вы указали адрес <b style="color:#5A2E5C;">%s</b> как новую почту для вашего аккаунта BatEnergy. Чтобы завершить смену, подтвердите этот адрес:</p>
+                                <p style="text-align:center;margin:30px 0;">
+                                    <a href="%s" style="display:inline-block;padding:14px 32px;background-color:#FFA20D;color:#2A0E33;text-decoration:none;border-radius:12px;font-weight:800;font-size:15px;">Подтвердить новую почту</a>
                                 </p>
-                                <p>Или скопируйте ссылку в браузер:</p>
-                                <p style="background-color: #eee; padding: 10px; border-radius: 4px; word-break: break-all;">
-                                    %s
-                                </p>
-                                <p>Ссылка действительна в течение 24 часов. Пока вы не перейдёте по ней,
-                                   почта аккаунта не изменится и вход выполняется по старому адресу.</p>
-                                <p>Если вы не запрашивали смену почты, просто проигнорируйте это письмо.</p>
+                                <p style="margin:0 0 8px;font-size:14px;color:#666;">Или скопируйте ссылку в браузер:</p>
+                                <p style="background:#f3eaf3;padding:12px 14px;border-radius:10px;word-break:break-all;color:#5A2E5C;font-size:13px;margin:0 0 18px;">%s</p>
+                                <p style="font-size:13px;color:#888;margin:0 0 6px;">Ссылка действительна 24 часа. Пока вы не перейдёте по ней, почта аккаунта не изменится, и вход выполняется по старому адресу.</p>
+                                <p style="font-size:13px;color:#888;margin:0 0 16px;">Если вы не запрашивали смену почты, просто проигнорируйте это письмо.</p>
                             </div>
-                            <div class="footer">
-                                <p>© 2024 Charging Stations. Все права защищены.</p>
-                                <p>Это письмо отправлено автоматически, пожалуйста, не отвечайте на него.</p>
-                            </div>
+                            %s
                         </div>
-                    </body>
-                    </html>
-                    """.formatted(newEmail, url, url);
+                    </div>
+                </body>
+                </html>
+                """.formatted(BRAND_HEADER, newEmail, url, url, BRAND_FOOTER);
     }
 
     private String buildStationFaultedHtml(Object chargeBoxId, Object connectorId, Object status, Object errorCode) {
