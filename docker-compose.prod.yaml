@@ -147,6 +147,24 @@ services:
       timeout: 5s
       retries: 5
 
+  support-bot-service-db:
+    image: postgres:16
+    container_name: support-bot-service-db
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      POSTGRES_DB: supportbotdb
+      POSTGRES_USER: supportbot
+      POSTGRES_PASSWORD: ${SUPPORT_BOT_DB_PASSWORD:-changeme}
+    volumes:
+      - supportbot-db-data:/var/lib/postgresql/data
+    networks: [charging-stations-network]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U supportbot -d supportbotdb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   # MariaDB для SteVe. Pin 10.4.30 — см. комментарий в docker-compose.local.yaml.
   db:
     image: mariadb:10.4.30
@@ -702,6 +720,32 @@ services:
       keycloak:
         condition: service_started
 
+  support-bot-service:
+    build:
+      context: .
+      dockerfile: Dockerfile-services
+      args:
+        JAR_FILE: support-bot-service/target/support-bot-service-1.0-SNAPSHOT-exec.jar
+    container_name: support-bot-service
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      <<: *java-opts
+      SPRING_R2DBC_URL: r2dbc:postgresql://support-bot-service-db:5432/supportbotdb
+      SPRING_R2DBC_USERNAME: supportbot
+      SPRING_R2DBC_PASSWORD: ${SUPPORT_BOT_DB_PASSWORD:-changeme}
+      SPRING_LIQUIBASE_URL: jdbc:postgresql://support-bot-service-db:5432/supportbotdb
+      SPRING_LIQUIBASE_USER: supportbot
+      SPRING_LIQUIBASE_PASSWORD: ${SUPPORT_BOT_DB_PASSWORD:-changeme}
+      # Telegram: токен из @BotFather и id чата/группы поддержки для форварда жалоб.
+      # Пусто → сервис стартует, но long polling выключен (WARN в логе) — не блокирует стек.
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_SUPPORT_CHAT_ID: ${TELEGRAM_SUPPORT_CHAT_ID:-}
+    networks: [charging-stations-network]
+    depends_on:
+      support-bot-service-db:
+        condition: service_healthy
+
   api-gateway-service:
     build:
       context: .
@@ -775,6 +819,10 @@ services:
       - ./nginx/.htpasswd:/etc/nginx/.htpasswd:ro
       # Статика админ-панели (React SPA) — раздаётся на /console/.
       - ./chargingStationsAdmin/dist:/usr/share/nginx/html/console:ro
+      # Публичная статика приложения: динамический конфиг (контакты/FAQ/ссылки) + юр. документы.
+      # Раздаётся на /app-config.json, /privacy, /terms. Правки: изменить файл в репозитории →
+      # git pull на сервере (bind-mount, reload nginx не нужен — это статика).
+      - ./hosting:/usr/share/nginx/html/static:ro
       # TLS (#6): обёртка запуска + сертификаты Let's Encrypt (RW: entrypoint.sh пишет временный self-signed,
       # если серта ещё нет, чтобы nginx стартовал) + webroot для ACME-challenge (ro). Тома общие с certbot.
       - ./nginx/entrypoint.sh:/entrypoint.sh:ro
@@ -814,6 +862,7 @@ volumes:
   payment-db-data:
   booking-db-data:
   contractor-db-data:
+  supportbot-db-data:
   mariadb_data:
   redis-data:
   es-data:

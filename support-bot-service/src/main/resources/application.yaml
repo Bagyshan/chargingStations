@@ -1,0 +1,38 @@
+server:
+  port: 8014
+
+spring:
+  application:
+    name: support-bot-service
+
+  r2dbc:
+    url: ${SPRING_R2DBC_URL:r2dbc:postgresql://localhost:5438/supportbotdb}
+    username: ${SPRING_R2DBC_USERNAME:supportbot}
+    password: ${SPRING_R2DBC_PASSWORD:changeme}
+
+  liquibase:
+    enabled: true
+    change-log: classpath:db/changelog/db.changelog-master.xml
+    url: ${SPRING_LIQUIBASE_URL:jdbc:postgresql://localhost:5438/supportbotdb}
+    user: ${SPRING_LIQUIBASE_USER:supportbot}
+    password: ${SPRING_LIQUIBASE_PASSWORD:changeme}
+
+# Telegram-бот поддержки. Токен из @BotFather; support-chat-id — куда форвардить жалобы.
+# В проде оба значения приходят из .env через docker-compose (TELEGRAM_BOT_TOKEN / TELEGRAM_SUPPORT_CHAT_ID).
+telegram:
+  bot:
+    token: ${TELEGRAM_BOT_TOKEN:}
+    support-chat-id: ${TELEGRAM_SUPPORT_CHAT_ID:}
+    poll-timeout-seconds: 30
+    api-base: https://api.telegram.org
+
+logging:
+  level:
+    charg.ing.stations: INFO
+
+# ---- Actuator: Prometheus-метрики для наблюдаемости (скрейпит OTel Collector-agent) ----
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "health,info,metrics,prometheus"
