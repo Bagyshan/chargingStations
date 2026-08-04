@@ -390,6 +390,10 @@ services:
     restart: unless-stopped
     logging: *default-logging
     # Доступ к SteVe (админка + OCPP WebSocket) — через nginx по пути /steve/, портов наружу не открываем.
+    # ВАЖНО: контейнер НЕ собирает SteVe при старте (это делает ./build-steve.sh заранее),
+    # а просто запускает готовый target/steve.jar → рестарт занимает секунды, а не минуты.
+    # Если jar ещё не собран — сначала выполнить ./build-steve.sh (см. его шапку).
+    command: ["sh", "-c", "dockerize -wait tcp://mariadb:3306 -timeout 60s && java -XX:MaxRAMPercentage=85 -jar target/steve.jar"]
     environment:
       # Пароль веб-админки SteVe. main.properties читает $STEVE_AUTH_PASSWORD из окружения
       # (PropertiesFileLoader.resolveIfSystemEnv). Без него docker compose up падает — задать в .env.

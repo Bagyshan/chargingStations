@@ -28,9 +28,14 @@ if [ ! -f .env ]; then
 fi
 
 if [ "${1:-}" != "--no-build" ]; then
-  echo ">>> Сборка jar всех модулей (кроме station-steve — он собирается в своём контейнере)"
+  echo ">>> Сборка jar всех модулей (кроме station-steve — он собирается отдельно, см. ниже)"
   # В корне нет mvnw — запускаем wrapper любого модуля против родительского pom.xml.
   ./booking-service/mvnw -f pom.xml clean package -Dmaven.test.skip=true -pl '!:steve'
+
+  # SteVe собирается ОТДЕЛЬНО и ЗАРАНЕЕ (jOOQ-кодген по живой схеме MariaDB), чтобы
+  # контейнер station-steve стартовал без Maven-сборки. Кладёт station-steve/target/steve.jar.
+  echo ">>> Пре-сборка SteVe"
+  ./build-steve.sh
 fi
 
 echo ">>> Сборка образов и запуск стека"
