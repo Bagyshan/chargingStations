@@ -7,12 +7,16 @@ import charg.ing.stations.repository.StationHourlyTariffRepository;
 import charg.ing.stations.service.ChargeBoxTariffService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 
 import java.time.Instant;
 import java.time.LocalTime;
+import java.time.ZoneId;
 import java.util.List;
 
 @Slf4j
@@ -26,10 +30,25 @@ public class StationHourlyTariffScheduler {
 
     private final StationHourlyTariffProducer producer;
 
-    @Scheduled(cron = "0 0 * * * *")
+    // Часовой пояс тарифов: администратор задаёт часы 0–23 в ЛОКАЛЬНОМ времени, а
+    // контейнер по умолчанию в UTC. Без явной зоны LocalTime.now() и cron берут UTC,
+    // из-за чего тариф применялся со сдвигом на смещение зоны (в KG — на 6 часов).
+    @Value("${app.tariff-zone:Asia/Bishkek}")
+    private String tariffZone;
+
+    // При старте сервиса сразу применяем тариф текущего часа — чтобы после рестарта/
+    // редеплоя цена синхронизировалась немедленно, а не ждала следующего часа.
+    @EventListener(ApplicationReadyEvent.class)
+    public void applyOnStartup() {
+        log.info("Applying current-hour tariffs on startup (zone={})", tariffZone);
+        publishCurrentHourTariffs();
+    }
+
+    // cron тоже в этой зоне — чтобы задача срабатывала в начале КАЖДОГО ЛОКАЛЬНОГО часа.
+    @Scheduled(cron = "0 0 * * * *", zone = "${app.tariff-zone:Asia/Bishkek}")
     public void publishCurrentHourTariffs() {
 
-        int currentHour = LocalTime.now().getHour();
+        int currentHour = LocalTime.now(ZoneId.of(tariffZone)).getHour();
 
         repository
                 .findAllByHour(currentHour)

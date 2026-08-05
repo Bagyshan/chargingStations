@@ -54,10 +54,36 @@ public class QrCodeService {
 
     private static BufferedImage loadLogo() {
         try (InputStream in = QrCodeService.class.getResourceAsStream("/qr/logo.png")) {
-            return in != null ? ImageIO.read(in) : null;
+            if (in == null) {
+                return null;
+            }
+            BufferedImage raw = ImageIO.read(in);
+            return raw == null ? null : cropToContent(raw);
         } catch (IOException e) {
             return null; // без логотипа QR всё равно генерируется
         }
+    }
+
+    /** Обрезает прозрачные поля вокруг логотипа, чтобы в центре QR он занимал больше места. */
+    private static BufferedImage cropToContent(BufferedImage img) {
+        int w = img.getWidth();
+        int h = img.getHeight();
+        int minX = w, minY = h, maxX = -1, maxY = -1;
+        for (int y = 0; y < h; y++) {
+            for (int x = 0; x < w; x++) {
+                int alpha = (img.getRGB(x, y) >>> 24) & 0xff;
+                if (alpha > 16) {
+                    if (x < minX) minX = x;
+                    if (x > maxX) maxX = x;
+                    if (y < minY) minY = y;
+                    if (y > maxY) maxY = y;
+                }
+            }
+        }
+        if (maxX < minX || maxY < minY) {
+            return img; // всё прозрачное — вернём как есть
+        }
+        return img.getSubimage(minX, minY, maxX - minX + 1, maxY - minY + 1);
     }
 
     public String buildPayload(String chargeBoxId, int connectorId) {
@@ -188,39 +214,37 @@ public class QrCodeService {
     }
 
     /**
-     * Логотип приложения в центре QR. Логотип «светящийся на тёмном фоне», поэтому
-     * кладём его на ТЁМНУЮ скруглённую плитку (чтобы свечение читалось), а вокруг —
-     * тонкая белая рамка, которая отделяет плитку от модулей QR (сканируемость).
+     * Логотип приложения в центре QR — «как есть» (цвет и прозрачность сохраняются),
+     * на белой скруглённой подложке, которая отделяет его от чёрных модулей QR
+     * (нужна для сканируемости). Никаких перекрасов/тёмных плиток — только сам логотип.
      */
     private void overlayLogo(BufferedImage qr, int sizePx) {
         if (logo == null) {
             return;
         }
-        int frameSize = Math.round(sizePx * 0.30f);  // белая рамка-подложка
-        int tileSize = Math.round(sizePx * 0.275f);  // тёмная плитка под логотип
-        int logoSize = Math.round(sizePx * 0.265f);  // сам логотип
+        int backSize = Math.round(sizePx * 0.32f);  // белая подложка
+        float pad = backSize * 0.12f;                // отступ логотипа от края подложки
+        float boxW = backSize - 2 * pad;
+        float boxH = backSize - 2 * pad;
         int cx = sizePx / 2;
         int cy = sizePx / 2;
+
+        // Масштаб с сохранением пропорций (логотип широкий — вписываем в бокс).
+        float scale = Math.min(boxW / logo.getWidth(), boxH / logo.getHeight());
+        int lw = Math.max(1, Math.round(logo.getWidth() * scale));
+        int lh = Math.max(1, Math.round(logo.getHeight() * scale));
+
         Graphics2D g = qr.createGraphics();
         g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
         g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
 
-        // Белая рамка (отделяет от чёрных модулей QR).
-        float frameArc = frameSize * 0.30f;
+        // Белая скруглённая подложка (отделяет логотип от модулей QR).
+        float backArc = backSize * 0.30f;
         g.setColor(Color.WHITE);
-        g.fill(new RoundRectangle2D.Float(cx - frameSize / 2f, cy - frameSize / 2f, frameSize, frameSize, frameArc, frameArc));
+        g.fill(new RoundRectangle2D.Float(cx - backSize / 2f, cy - backSize / 2f, backSize, backSize, backArc, backArc));
 
-        // Тёмная плитка — фон под свечение логотипа (фирменный тёмный).
-        float tileArc = tileSize * 0.30f;
-        g.setColor(new Color(0x16, 0x15, 0x19));
-        g.fill(new RoundRectangle2D.Float(cx - tileSize / 2f, cy - tileSize / 2f, tileSize, tileSize, tileArc, tileArc));
-
-        // Сам логотип, скруглённый по плитке.
-        float logoArc = logoSize * 0.30f;
-        Shape prevClip = g.getClip();
-        g.setClip(new RoundRectangle2D.Float(cx - logoSize / 2f, cy - logoSize / 2f, logoSize, logoSize, logoArc, logoArc));
-        g.drawImage(logo, cx - logoSize / 2, cy - logoSize / 2, logoSize, logoSize, null);
-        g.setClip(prevClip);
+        // Логотип как есть — цвет и прозрачность не трогаем, вписан по центру.
+        g.drawImage(logo, cx - lw / 2, cy - lh / 2, lw, lh, null);
         g.dispose();
     }
 
