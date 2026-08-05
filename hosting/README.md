@@ -41,9 +41,24 @@ docker compose -f docker-compose.prod.yaml up -d nginx
 - `legal.privacyUrl` / `legal.termsUrl` — обычно менять не нужно.
 - `faq` — массив `{ "q": "вопрос", "a": "ответ" }`, добавляй/убирай свободно.
 
+## Universal/App Links (`.well-known/`)
+
+Чтобы ссылка подтверждения email из письма **открывала приложение**, на домене
+должны раздаваться association-файлы (nginx уже настроен, отдаёт `application/json`):
+
+| Файл | URL | Для чего |
+|---|---|---|
+| `.well-known/apple-app-site-association` | `https://bat-energy.com.kg/.well-known/apple-app-site-association` | iOS Universal Links. Внутри `appID = LB4B33JAQ7.com.batenergy.app` и путь `/user/api/v1/auth/verify-email*`. |
+| `.well-known/assetlinks.json` | `https://bat-energy.com.kg/.well-known/assetlinks.json` | Android App Links. **Плейсхолдер** `REPLACE_WITH_ANDROID_RELEASE_SHA256` — заменить на SHA-256 релизного ключа, когда пойдём в Google Play (для iOS не нужно). |
+
+Правятся так же: изменил → `git push` → `git pull` на сервере. iOS кэширует AASA —
+после изменения переустанови приложение (или подожди), чтобы система перечитала файл.
+
 ## Проверка
 
 ```bash
 curl -s https://bat-energy.com.kg/app-config.json | head
 curl -sI https://bat-energy.com.kg/privacy
+# association-файлы должны отдаваться как application/json:
+curl -sI https://bat-energy.com.kg/.well-known/apple-app-site-association
 ```

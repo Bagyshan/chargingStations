@@ -14,7 +14,9 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Mono;
@@ -183,17 +185,89 @@ public class AuthController {
                     description = "Недействительный или просроченный токен")
     })
     @GetMapping("/verify-email")
-    public Mono<ResponseEntity<ApiResponse<Object>>> verifyEmail(
-            @RequestParam String token) {
+    public Mono<ResponseEntity<Object>> verifyEmail(
+            @RequestParam String token,
+            @RequestHeader(value = HttpHeaders.ACCEPT, required = false) String accept) {
 
-        log.info("Email verification attempt with token");
+        // Content negotiation: браузер (Universal Link открылся в Safari, т.к. приложение
+        // не установлено) получает брендовую HTML-страницу; приложение (Dio, Accept: json)
+        // — обычный JSON. Ссылка одна и та же — bat-energy.com.kg/user/.../verify-email.
+        final boolean wantsHtml = accept != null && accept.contains(MediaType.TEXT_HTML_VALUE);
+        log.info("Email verification attempt (html={})", wantsHtml);
 
         return userService.verifyEmail(token)
-                .thenReturn(ResponseEntity
-                        .ok(ApiResponse.success("Email verified successfully", null)))
-                .doOnSuccess(response -> log.info("Email verification successful"))
-                .doOnError(error -> log.warn("Email verification failed: {}", error.getMessage()));
+                .then(Mono.fromSupplier(() -> verificationResult(wantsHtml, true)))
+                .doOnSuccess(r -> log.info("Email verification successful"))
+                .onErrorResume(error -> {
+                    log.warn("Email verification failed: {}", error.getMessage());
+                    return Mono.just(verificationResult(wantsHtml, false));
+                });
     }
+
+    /** Формирует ответ подтверждения: HTML-страница для браузера или JSON для приложения. */
+    private ResponseEntity<Object> verificationResult(boolean html, boolean ok) {
+        final HttpStatus status = ok ? HttpStatus.OK : HttpStatus.BAD_REQUEST;
+        if (html) {
+            final Object body = ok ? VERIFIED_HTML : VERIFY_ERROR_HTML;
+            return ResponseEntity.status(status).contentType(MediaType.TEXT_HTML).body(body);
+        }
+        final Object body = ok
+                ? ApiResponse.success("Email verified successfully", null)
+                : ApiResponse.error("Invalid or expired verification token");
+        return ResponseEntity.status(status).body(body);
+    }
+
+    // Брендовые страницы подтверждения (показываются в браузере, если приложение не
+    // установлено; при установленном приложении Universal Link открывает само приложение).
+    private static final String VERIFIED_HTML = """
+            <!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Почта подтверждена — BatEnergy</title>
+            <style>
+              :root{color-scheme:light dark}*{box-sizing:border-box}
+              body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;
+                font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+                background:#f5f6f8;color:#1c1d21;padding:24px}
+              .card{max-width:420px;width:100%;background:#fff;border:1px solid #ececf0;border-radius:22px;
+                padding:32px 26px;text-align:center;box-shadow:0 12px 40px rgba(90,46,92,.10)}
+              .badge{width:84px;height:84px;margin:0 auto 20px;border-radius:26px;display:flex;
+                align-items:center;justify-content:center;font-size:44px;color:#fff;
+                background-image:linear-gradient(135deg,#FFB43A,#FFA20D,#8E4368,#5A2E5C)}
+              h1{font-size:22px;margin:0 0 10px}p{font-size:15px;line-height:1.5;color:#5b5f68;margin:0}
+              .brand{margin-top:22px;font-weight:800;letter-spacing:.5px;color:#8E4368}
+              @media (prefers-color-scheme:dark){body{background:#161519;color:#f4f3f7}
+                .card{background:#1f1e24;border-color:#34323b}p{color:#b7b4c2}}
+            </style></head><body><div class="card">
+              <div class="badge">✓</div>
+              <h1>Почта подтверждена</h1>
+              <p>Ваш адрес успешно подтверждён. Вернитесь в приложение <b>BatEnergy</b> и войдите в аккаунт.</p>
+              <div class="brand">BatEnergy</div>
+            </div></body></html>""";
+
+    private static final String VERIFY_ERROR_HTML = """
+            <!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Ссылка недействительна — BatEnergy</title>
+            <style>
+              :root{color-scheme:light dark}*{box-sizing:border-box}
+              body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;
+                font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+                background:#f5f6f8;color:#1c1d21;padding:24px}
+              .card{max-width:420px;width:100%;background:#fff;border:1px solid #ececf0;border-radius:22px;
+                padding:32px 26px;text-align:center;box-shadow:0 12px 40px rgba(90,46,92,.10)}
+              .badge{width:84px;height:84px;margin:0 auto 20px;border-radius:26px;display:flex;
+                align-items:center;justify-content:center;font-size:44px;color:#fff;background:#E5484D}
+              h1{font-size:22px;margin:0 0 10px}p{font-size:15px;line-height:1.5;color:#5b5f68;margin:0}
+              .brand{margin-top:22px;font-weight:800;letter-spacing:.5px;color:#8E4368}
+              @media (prefers-color-scheme:dark){body{background:#161519;color:#f4f3f7}
+                .card{background:#1f1e24;border-color:#34323b}p{color:#b7b4c2}}
+            </style></head><body><div class="card">
+              <div class="badge">!</div>
+              <h1>Ссылка недействительна</h1>
+              <p>Ссылка устарела или уже была использована. Откройте приложение <b>BatEnergy</b>
+              и запросите новое письмо для подтверждения.</p>
+              <div class="brand">BatEnergy</div>
+            </div></body></html>""";
 
     @Operation(summary = "Подтверждение смены email (ссылка из письма на новый адрес)")
     @ApiResponses(value = {

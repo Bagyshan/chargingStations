@@ -1,0 +1,13 @@
+{
+  "applinks": {
+    "apps": [],
+    "details": [
+      {
+        "appID": "LB4B33JAQ7.com.batenergy.app",
+        "paths": [
+          "/user/api/v1/auth/verify-email*"
+        ]
+      }
+    ]
+  }
+}
