@@ -187,23 +187,35 @@ public class QrCodeService {
         }
     }
 
-    /** Логотип приложения в центре QR — на белой скруглённой подложке (контраст + отделение от модулей). */
+    /**
+     * Логотип приложения в центре QR. Логотип «светящийся на тёмном фоне», поэтому
+     * кладём его на ТЁМНУЮ скруглённую плитку (чтобы свечение читалось), а вокруг —
+     * тонкая белая рамка, которая отделяет плитку от модулей QR (сканируемость).
+     */
     private void overlayLogo(BufferedImage qr, int sizePx) {
         if (logo == null) {
             return;
         }
-        int logoSize = Math.round(sizePx * 0.22f);
-        int backSize = Math.round(sizePx * 0.28f);
+        int frameSize = Math.round(sizePx * 0.30f);  // белая рамка-подложка
+        int tileSize = Math.round(sizePx * 0.275f);  // тёмная плитка под логотип
+        int logoSize = Math.round(sizePx * 0.265f);  // сам логотип
         int cx = sizePx / 2;
         int cy = sizePx / 2;
         Graphics2D g = qr.createGraphics();
         g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
         g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
 
-        float backArc = backSize * 0.32f;
+        // Белая рамка (отделяет от чёрных модулей QR).
+        float frameArc = frameSize * 0.30f;
         g.setColor(Color.WHITE);
-        g.fill(new RoundRectangle2D.Float(cx - backSize / 2f, cy - backSize / 2f, backSize, backSize, backArc, backArc));
+        g.fill(new RoundRectangle2D.Float(cx - frameSize / 2f, cy - frameSize / 2f, frameSize, frameSize, frameArc, frameArc));
 
+        // Тёмная плитка — фон под свечение логотипа (фирменный тёмный).
+        float tileArc = tileSize * 0.30f;
+        g.setColor(new Color(0x16, 0x15, 0x19));
+        g.fill(new RoundRectangle2D.Float(cx - tileSize / 2f, cy - tileSize / 2f, tileSize, tileSize, tileArc, tileArc));
+
+        // Сам логотип, скруглённый по плитке.
         float logoArc = logoSize * 0.30f;
         Shape prevClip = g.getClip();
         g.setClip(new RoundRectangle2D.Float(cx - logoSize / 2f, cy - logoSize / 2f, logoSize, logoSize, logoArc, logoArc));
