@@ -19,7 +19,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
 import jakarta.ws.rs.NotAuthorizedException;
-import jakarta.ws.rs.ProcessingException;
+import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.core.Response;
 import java.util.Collections;
 import java.util.List;
@@ -147,22 +147,50 @@ public class KeycloakService {
 
         } catch (UserAlreadyExistsException | IdentityProviderException e) {
             throw e; // уже осмысленные — пробрасываем как есть
-        } catch (NotAuthorizedException e) {
-            // 401 при получении admin-токена → неверный KEYCLOAK_ADMIN_PASSWORD или нет admin в master realm.
-            log.error("Keycloak ADMIN authentication FAILED. Проверь KEYCLOAK_ADMIN_PASSWORD в .env и что "
-                    + "пользователь '{}' существует в realm master (см. README/DEPLOY).", adminUsername, e);
-            throw new IdentityProviderException(
-                    "Identity provider is unavailable. Please try again later.", HttpStatus.BAD_GATEWAY);
-        } catch (ProcessingException e) {
-            // Сетевая ошибка/таймаут — Keycloak недоступен по authServerUrl.
-            log.error("Keycloak UNREACHABLE at {} (connection/timeout) while registering {}", authServerUrl, email, e);
-            throw new IdentityProviderException(
-                    "Identity provider is unavailable. Please try again later.", HttpStatus.BAD_GATEWAY);
         } catch (Exception e) {
-            log.error("Unexpected Keycloak error while creating user {}", email, e);
+            // keycloak-admin-client оборачивает 401 из грант-запроса в ProcessingException
+            // (BearerAuthFilter кидает NotAuthorizedException внутри фильтра) — поэтому классифицируем
+            // по всей цепочке cause, а не по типу верхнего исключения.
+            if (isAuthFailure(e)) {
+                log.error("Keycloak ADMIN authentication FAILED (HTTP 401). Пароль admin '{}' в Keycloak НЕ "
+                        + "совпадает с KEYCLOAK_ADMIN_PASSWORD из .env. Bootstrap-пароль применяется ТОЛЬКО к пустой "
+                        + "БД Keycloak, поэтому смена .env после первого запуска не меняет реальный пароль — "
+                        + "синхронизируй пароли (см. DEPLOY.md).", adminUsername, e);
+            } else if (isConnectionFailure(e)) {
+                log.error("Keycloak UNREACHABLE at {} (connection/timeout) while registering {}", authServerUrl, email, e);
+            } else {
+                log.error("Unexpected Keycloak error while creating user {}", email, e);
+            }
             throw new IdentityProviderException(
                     "Identity provider is unavailable. Please try again later.", HttpStatus.BAD_GATEWAY);
         }
+    }
+
+    /** Есть ли в цепочке причин 401 (протухший/неверный admin-токен). */
+    private static boolean isAuthFailure(Throwable t) {
+        for (Throwable c = t; c != null; c = c.getCause()) {
+            if (c instanceof NotAuthorizedException) {
+                return true;
+            }
+            if (c instanceof WebApplicationException wae
+                    && wae.getResponse() != null
+                    && wae.getResponse().getStatus() == 401) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Есть ли в цепочке причин реальная сетевая ошибка (Keycloak недоступен). */
+    private static boolean isConnectionFailure(Throwable t) {
+        for (Throwable c = t; c != null; c = c.getCause()) {
+            if (c instanceof java.net.ConnectException
+                    || c instanceof java.net.UnknownHostException
+                    || c instanceof java.net.SocketTimeoutException) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** Публичная версия: назначить роль (свежий admin-клиент). */

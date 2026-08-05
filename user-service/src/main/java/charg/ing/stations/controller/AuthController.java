@@ -239,6 +239,32 @@ public class AuthController {
                 .ok(ApiResponse.success("Verification email sent")));
     }
 
+    @Operation(summary = "Повторная отправка письма подтверждения по email (без авторизации)")
+    @ApiResponses(value = {
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "200",
+                    description = "Если аккаунт существует и не подтверждён — письмо отправлено")
+    })
+    @PostMapping("/verify-email/resend")
+    public Mono<ResponseEntity<ApiResponse<Void>>> resendVerification(
+            @Valid @RequestBody ResendVerificationRequest request) {
+
+        final String email = request.getEmail().trim().toLowerCase();
+        log.info("Public resend verification request for: {}", email);
+
+        // ВСЕГДА возвращаем 200 с одинаковым сообщением — не раскрываем, существует
+        // ли аккаунт и подтверждён ли он (защита от перебора email). Ошибки (в т.ч.
+        // «пользователь не найден») подавляем и логируем.
+        final ApiResponse<Void> ok = ApiResponse.success(
+                "Если аккаунт существует и ещё не подтверждён, письмо отправлено");
+        return userService.initiateEmailVerification(email)
+                .thenReturn(ResponseEntity.ok(ok))
+                .onErrorResume(error -> {
+                    log.warn("Resend verification suppressed for {}: {}", email, error.toString());
+                    return Mono.just(ResponseEntity.ok(ok));
+                });
+    }
+
     @Operation(summary = "Проверка доступности email")
     @ApiResponses(value = {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
