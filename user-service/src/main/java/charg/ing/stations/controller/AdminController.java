@@ -1,6 +1,7 @@
 package charg.ing.stations.controller;
 
 import charg.ing.stations.dto.request.ChangeRoleRequest;
+import charg.ing.stations.dto.response.AdminVerificationEntry;
 import charg.ing.stations.dto.response.ApiResponse;
 import charg.ing.stations.dto.response.UserProfileResponse;
 import charg.ing.stations.dto.response.UserResponse;
@@ -19,6 +20,7 @@ import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
+import java.util.List;
 import java.util.Map;
 
 @Slf4j
@@ -130,6 +132,33 @@ public class AdminController {
 
         return Mono.just(ResponseEntity.ok(
                 ApiResponse.success("Users found", userResponses)));
+    }
+
+    @Operation(summary = "OTP-токены подтверждения email всех пользователей (ссылки/коды)")
+    @GetMapping("/verification-tokens")
+    public Mono<ResponseEntity<ApiResponse<List<AdminVerificationEntry>>>> getVerificationTokens() {
+
+        log.info("Admin requesting email verification tokens overview");
+
+        return userService.getEmailVerificationOverview().collectList()
+                .map(list -> ResponseEntity.ok(
+                        ApiResponse.success("Verification tokens retrieved", list)));
+    }
+
+    @Operation(summary = "Принудительно подтвердить email пользователя (активация)")
+    @PostMapping("/users/{id}/verify-email")
+    public Mono<ResponseEntity<ApiResponse<Void>>> verifyUserEmail(@PathVariable Long id) {
+
+        log.info("Admin manually verifying email for user: {}", id);
+
+        return userService.adminVerifyUserEmail(id)
+                .thenReturn(ResponseEntity.ok(
+                        ApiResponse.<Void>success("Email verified by admin", null)))
+                .onErrorResume(error -> {
+                    log.error("Admin verify-email failed for {}: {}", id, error.toString());
+                    return Mono.just(ResponseEntity.badRequest()
+                            .body(ApiResponse.<Void>error(error.getMessage())));
+                });
     }
 
     @Operation(summary = "Получить статистику пользователей")

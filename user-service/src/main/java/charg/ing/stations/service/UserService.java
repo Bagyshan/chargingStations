@@ -1,6 +1,7 @@
 package charg.ing.stations.service;
 
 import charg.ing.stations.dto.request.*;
+import charg.ing.stations.dto.response.AdminVerificationEntry;
 import charg.ing.stations.dto.response.AuthResponse;
 import charg.ing.stations.dto.response.EmailChangeStatusResponse;
 import charg.ing.stations.entity.PasswordResetToken;
@@ -52,6 +53,56 @@ public class UserService {
     private final UserFavoriteStationRepository userFavoriteStationRepository;
     private final PasswordEncoder passwordEncoder;
     private final EmailService emailService;
+
+    // Базовый URL для сборки ссылки подтверждения (совпадает с тем, что строит
+    // notification-service). В проде = https://<host>/user (APP_BASEURL).
+    @org.springframework.beans.factory.annotation.Value("${app.base-url:http://localhost:8005}")
+    private String appBaseUrl;
+
+    // ==================== Админка: OTP-обзор и ручная активация ====================
+
+    /**
+     * Список токенов подтверждения email всех пользователей — для админки:
+     * сам код (token), полная ссылка подтверждения, срок и статус.
+     */
+    public Flux<AdminVerificationEntry> getEmailVerificationOverview() {
+        return verificationTokenRepository
+                .findAllByTokenTypeOrderByCreatedAtDesc(VerificationToken.TokenType.EMAIL_VERIFICATION)
+                .flatMap(vt -> userRepository.findById(vt.getUserId())
+                        .map(user -> AdminVerificationEntry.builder()
+                                .userId(user.getId())
+                                .email(user.getEmail())
+                                .emailVerified(Boolean.TRUE.equals(user.getEmailVerified()))
+                                .token(vt.getToken())
+                                .verifyLink(appBaseUrl + "/api/v1/auth/verify-email?token=" + vt.getToken())
+                                .expiresAt(vt.getExpiresAt())
+                                .used(Boolean.TRUE.equals(vt.getUsed()))
+                                .expired(vt.getExpiresAt() != null
+                                        && vt.getExpiresAt().isBefore(LocalDateTime.now()))
+                                .build()));
+    }
+
+    /**
+     * Принудительно подтвердить email пользователя (админ активирует аккаунт вручную).
+     * Ставит emailVerified=true в БД и в Keycloak — после этого пользователь может войти.
+     */
+    @Transactional
+    public Mono<Void> adminVerifyUserEmail(Long userId) {
+        return userRepository.findById(userId)
+                .switchIfEmpty(Mono.error(new UserNotFoundException("User not found")))
+                .flatMap(user -> {
+                    if (Boolean.TRUE.equals(user.getEmailVerified())) {
+                        return Mono.empty(); // уже подтверждён — считаем успехом
+                    }
+                    user.setEmailVerified(true);
+                    return Mono.fromRunnable(
+                                    () -> keycloakService.updateEmailVerified(user.getKeycloakId(), true))
+                            .subscribeOn(Schedulers.boundedElastic())
+                            .then(userRepository.save(user))
+                            .doOnSuccess(u -> log.info("Admin manually verified email for user: {}", user.getEmail()))
+                            .then();
+                });
+    }
 
     @Transactional
     public Mono<AuthResponse> register(RegisterRequest request, String ipAddress, String userAgent) {

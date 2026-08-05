@@ -4,6 +4,7 @@ import {
   CalendarClock,
   Cable,
   Coins,
+  KeyRound,
   LayoutDashboard,
   Plug,
   ScrollText,
@@ -25,6 +26,7 @@ export type AppPath =
   | '/bookings'
   | '/transactions'
   | '/users'
+  | '/verification'
   | '/audit'
   | '/settings';
 
@@ -71,6 +73,7 @@ export const NAV: NavGroup[] = [
     title: 'Администрирование',
     items: [
       { to: '/users', label: 'Пользователи', icon: Users, roles: ['ADMIN'] },
+      { to: '/verification', label: 'OTP и активация', icon: KeyRound, roles: ['ADMIN'] },
       { to: '/audit', label: 'Журнал аудита', icon: ScrollText, roles: ['ADMIN', 'SPECIALIST'] },
       { to: '/settings', label: 'Настройки', icon: Settings, roles: ALL },
     ],
