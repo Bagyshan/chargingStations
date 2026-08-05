@@ -123,6 +123,15 @@ public class TransactionService implements EventService {
 
     @Transactional(isolation = Isolation.READ_COMMITTED, propagation = Propagation.REQUIRED)
     public void saveStartTransactionAndAck(TransactionResponseDTO req, Acknowledgment ack) {
+        // РЕЗИЛЬЕНТНОСТЬ: без подтверждённого transactionId (SteVe не стартовал) НЕ пишем
+        // строку — иначе NOT NULL на transaction_id роняет вставку. Ack и выходим, чтобы
+        // не крутить «ядовитое» сообщение в Kafka-консьюмере (charger-initiated start).
+        if (req.getTransactionId() == null) {
+            log.warn("saveStartTransactionAndAck: start not confirmed (no transactionId) for station {} connector {} — skip persist",
+                    req.getChargeBoxId(), req.getConnectorId());
+            if (ack != null) ack.acknowledge();
+            return;
+        }
         try {
             TransactionEntity entity = new TransactionEntity();
             entity.setTransactionId(req.getTransactionId());

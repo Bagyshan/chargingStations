@@ -113,7 +113,9 @@ public class StationWebSocketHandler implements WebSocketHandler {
                             });
                 })
                 .onErrorResume(e -> {
-                    log.error("Authentication failed: {}", e.getMessage());
+                    // Истёкший/невалидный токен при (пере)подключении — ожидаемое событие
+                    // (клиент обновит токен и переподключится). Закрываем тихо, без ERROR-спама.
+                    log.debug("WS auth rejected (invalid/expired token): {}", e.getMessage());
                     return session.close();
                 });
     }

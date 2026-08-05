@@ -15,6 +15,7 @@ import charg.ing.stations.service.TransactionService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.security.oauth2.resource.OAuth2ResourceServerProperties;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -32,6 +33,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
+@Slf4j
 @RestController
 @RequestMapping("/api/stations")
 @RequiredArgsConstructor
@@ -134,6 +136,19 @@ public class StationController {
                             .flatMap(responseMap -> {
                                 // Преобразуем ответ в DTO
                                 TransactionResponseDTO response = objectMapper.convertValue(responseMap, TransactionResponseDTO.class);
+
+                                // РЕЗИЛЬЕНТНОСТЬ: SteVe/станция не подтвердили старт — в ответе нет
+                                // transactionId (SteVe вернул 5xx, станция офлайн/отклонила и т.п.).
+                                // НЕ пишем битую строку в БД (transaction_id NOT NULL → краш 500),
+                                // а отдаём понятный ответ. Мобилка мапит X-Unavailable-Reason в текст.
+                                if (response.getTransactionId() == null) {
+                                    log.warn("Start not confirmed by station {} connector {} (no transactionId in OCPP response) — likely SteVe/OCPP failure",
+                                            request.getChargeBoxId(), request.getConnectorId());
+                                    return Mono.just(ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+                                            .header("X-Unavailable-Reason", "START_FAILED")
+                                            .<TransactionResponseDTO>build());
+                                }
+
                                 if (response.getUserId() == null) {
                                     response.setUserId(userId);
                                 }
@@ -144,8 +159,17 @@ public class StationController {
                                 // Фиктивный Acknowledgment (не используется в HTTP-контексте)
                                 org.springframework.kafka.support.Acknowledgment noopAck = () -> {};
 
-                                // Вызываем существующий метод сохранения
-                                transactionService.saveStartTransactionAndAck(response, noopAck);
+                                // Сохранение оборачиваем: любой сбой персистентности → понятная 500,
+                                // а не «сырое» исключение наружу.
+                                try {
+                                    transactionService.saveStartTransactionAndAck(response, noopAck);
+                                } catch (Exception persistErr) {
+                                    log.error("Failed to persist start transaction for station {} connector {}: {}",
+                                            request.getChargeBoxId(), request.getConnectorId(), persistErr.toString(), persistErr);
+                                    return Mono.just(ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                                            .header("X-Unavailable-Reason", "START_PERSIST_FAILED")
+                                            .<TransactionResponseDTO>build());
+                                }
 
                                 Map<String, Object> auditPayload = new HashMap<>();
                                 auditPayload.put("connectorId", request.getConnectorId());
@@ -153,6 +177,15 @@ public class StationController {
                                         "INFO", "Remote start requested by user", auditPayload);
 
                                 return Mono.just(ResponseEntity.ok(response));
+                            })
+                            // Таймаут/сбой обмена с station-integration/SteVe — не роняем 500,
+                            // отдаём 503 «станция недоступна» вместо сырого исключения.
+                            .onErrorResume(err -> {
+                                log.error("Start transaction OCPP exchange failed for station {} connector {}: {}",
+                                        request.getChargeBoxId(), request.getConnectorId(), err.toString());
+                                return Mono.just(ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                                        .header("X-Unavailable-Reason", "STATION_UNREACHABLE")
+                                        .<TransactionResponseDTO>build());
                             });
                 });
     }
